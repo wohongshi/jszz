@@ -28,17 +28,21 @@ Cherry Studio …）都能调。
 | 4 | 学案自动生成 PPT | `make_xuean(pptx=True)` |
 | 5 | 试卷编写 / 组卷（docx，带答案页） | `make_paper_md` `assemble_paper` |
 | 6 | 试卷转讲评 PPT | `make_paper_md(pptx=True)` |
-| 7 | 登录态与依赖的本地控制台（WebUI） | `jszz web` |
+| 7 | 登录态 / 依赖自检 / 产物下载的本地控制台 | `jszz web` |
+| 8 | 技能包 `jszz.skill`（SKILL.md + 6 篇排版规范） | 下载仓库根目录的 `jszz.skill` |
 
 ## 安装
 
 ```bash
 git clone https://github.com/wohongshi/jszz.git
 cd jszz
-pip install -r requirements.txt          # mcp requests python-docx python-pptx lxml
+pip install -e .                         # 装 jszz 命令 + mcp/requests/python-docx/python-pptx
 sudo apt install nodejs                  # 过学科网 WAF 必需
 pip install yt-dlp && sudo apt install ffmpeg   # 可选：下载 B 站音视频
 ```
+
+> 不想装成包也行：`pip install -r requirements.txt`，把命令里的 `jszz` 换成
+> `python -m jszz.cli`，`PYTHONPATH` 指向 `server/`。
 
 ## 接入 MCP
 
@@ -107,7 +111,7 @@ jszz paper examples/paper-wuli.md        # → ~/.jszz/out/paper/*.docx / *.pptx
 
 ```
 server/jszz/
-  server.py        MCP 工具定义（13 个）
+  server.py        MCP 工具定义（15 个）
   bilibili.py      WBI 签名、搜索、字幕、下载
   zxxk.py          学科网搜索/详情/预览页、组卷网
   waf.py           WAF 挑战求解（调 bin/fetch_alicfw.js）

@@ -1,4 +1,4 @@
-"""jszz MCP server: B站取素材 / 学科网取题 / 学案与试卷生成。
+"""jszz MCP server: B站取素材 / 学科网取题 / 学案与试卷生成（15 个工具）。
 
 传输：stdio（默认，供 Claude Code、WorkBuddy、Cline 等本地 MCP 客户端调用）
       streamable-http（`jszz serve --http` 或 `python -m jszz.server --http`）
