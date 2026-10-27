@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jszz"
+version = "1.0.0"
+description = "中学备课 MCP 工具集：B站素材 / 学科网题目 / 学案与试卷生成"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "jszz contributors" }]
+dependencies = [
+  "mcp>=1.2",
+  "requests>=2.31",
+  "python-docx>=1.1",
+  "python-pptx>=0.6.23",
+  "lxml>=4.9",
+  "Pillow>=10.0",
+]
+
+[project.optional-dependencies]
+download = ["yt-dlp"]
+
+[project.scripts]
+jszz = "jszz.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "server" }
+
+[tool.setuptools.packages.find]
+where = ["server"]
+
+[tool.setuptools.package-data]
+jszz = ["bin/*.js"]

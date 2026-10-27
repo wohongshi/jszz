@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+pylibs/
+.jszz-test/
+analysis/
+out/
+*.pdf
+*.png
+!docs/**/*.png
