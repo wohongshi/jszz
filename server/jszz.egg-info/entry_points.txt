@@ -1,2 +1,0 @@
-[console_scripts]
-jszz = jszz.cli:main

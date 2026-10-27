@@ -8,3 +8,5 @@ out/
 *.pdf
 *.png
 !docs/**/*.png
+build/
+*.egg-info/
