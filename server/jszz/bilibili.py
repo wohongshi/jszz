@@ -206,23 +206,35 @@ class BilibiliClient:
         url = f"https://www.bilibili.com/video/{bvid}"
         if page and page > 1:
             url += f"?p={page}"
-        fmt = "bestaudio/best" if audio_only else (
-            f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best")
-        cmd = [
+        if audio_only:
+            candidates = ["bestaudio/best"]
+        else:
+            # 竖屏视频 height 恒为 1920，不能只按 height 过滤，逐个降级试
+            candidates = [
+                f"bv*[height<={quality}][ext=mp4]+ba[ext=m4a]/b[height<={quality}]",
+                f"bv*[width<={quality}]+ba/bv*[height<={quality}]+ba",
+                "bv*+ba/b",
+                "b",
+            ]
+        base = [
             "yt-dlp", url, "-o", str(out_dir / "%(title).120B.%(ext)s"),
-            "-f", fmt, "--no-playlist", "--restrict-filenames",
-            "--print", "after_move:filepath",
+            "--no-playlist", "-f", candidates[0], "--print", "after_move:filepath",
         ]
         if audio_only:
-            cmd += ["-x", "--audio-format", "mp3", "--audio-quality", "0"]
+            base += ["-x", "--audio-format", "mp3", "--audio-quality", "0"]
         if self.cookie_string():
-            cmd += ["--add-header", f"Cookie:{self.cookie_string()}"]
-        cmd += ["--add-header", f"User-Agent:{UA}", "--add-header", "Referer:https://www.bilibili.com/"]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-        if proc.returncode != 0:
-            return {"ok": False, "error": (proc.stderr or "")[-800:]}
-        path = (proc.stdout or "").strip().splitlines()[-1] if proc.stdout.strip() else ""
-        return {"ok": True, "path": path, "audio_only": audio_only}
+            base += ["--add-header", f"Cookie:{self.cookie_string()}"]
+        base += ["--add-header", f"User-Agent:{UA}", "--add-header", "Referer:https://www.bilibili.com/"]
+        last_err = ""
+        for fmt in candidates:
+            attempt = list(base)
+            attempt[attempt.index("-f") + 1] = fmt
+            proc = subprocess.run(attempt, capture_output=True, text=True, timeout=1800)
+            if proc.returncode == 0:
+                path = (proc.stdout or "").strip().splitlines()[-1] if proc.stdout.strip() else ""
+                return {"ok": True, "path": path, "audio_only": audio_only, "format": fmt}
+            last_err = (proc.stderr or "")[-600:]
+        return {"ok": False, "error": last_err}
 
     def hot(self, pn: int = 1, ps: int = 20) -> list[dict]:
         data = self.get("/x/web-interface/popular", {"pn": pn, "ps": ps}, wbi=False)
