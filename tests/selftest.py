@@ -79,6 +79,42 @@ md3 = Path(r["files"]["md"]).read_text("utf-8")
 check("一、单项选择题" in md3 and "二、填空题" in md3 and "三、解答题" in md3, "按题型自动分节")
 check(md3.count("本题共1小题") == 3, "自动写题量与分节")
 
+print("== 新增能力（v1.1）==")
+from jszz.qa import check_docx, check_pptx, check_markdown  # noqa: E402
+
+d3 = Document(str(docx_path))
+head = "".join(p.text for p in d3.sections[0].header.paragraphs)
+head += "".join(c.text for t in d3.sections[0].header.tables for r in t.rows for c in r.cells)
+check("编写人" in head, "学案页眉含编写人/审核字段")
+foot = "".join(p.text for p in d3.sections[0].footer.paragraphs)
+check("共" in foot and "页" in foot, "页脚为「第X页（共Y页）」")
+kinds = [b.kind for sec in __import__("jszz.mdparse", fromlist=["parse"]).parse(md).sections
+         for b in sec.blocks]
+check("tip" in kinds, "【特别提醒】识别为 tip 块")
+check("insight" in kinds, "【点睛】识别为 insight 块")
+
+prs3 = Presentation(str(build_xuean_deck(md, OUT / "xuean.pptx", school="测试中学")))
+bands = 0
+for sl in prs3.slides:
+    for sh in sl.shapes:
+        if sh.shape_type == 1 and sh.width and abs(sh.width.inches - 13.333) < 0.05:
+            bands += 1
+            break
+check(bands >= 5, f"通栏页头/底部色带存在 ({bands} 页)")
+
+has_note = any("判定要点" in (sh.text_frame.text if sh.has_text_frame else "")
+               for sl in prs3.slides for sh in sl.shapes)
+check(has_note, "例题页有「判定要点」批注框")
+
+d4 = Document(str(p_docx))
+check(len(d4.tables) >= 5, f"答案速查表已生成 ({len(d4.tables)} 表)")
+
+check(check_docx(docx_path)["ok"], "学案 docx 体检通过")
+check(check_pptx(pptx_path)["ok"], "学案 pptx 体检通过")
+check(check_docx(p_docx)["ok"], "试卷 docx 体检通过")
+check(check_pptx(p_pptx)["ok"], "讲评 pptx 体检通过")
+check(check_markdown(md)["ok"] and check_markdown(md2)["ok"], "Markdown 写作体检通过")
+
 print("== 打包完整性 ==")
 skill_zip = ROOT / "dist" / "jszz.skill"
 if skill_zip.exists():

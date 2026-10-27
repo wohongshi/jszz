@@ -106,6 +106,23 @@ def cmd_paper(args):
         print(f)
 
 
+def cmd_check(args):
+    from .qa import check
+    r = check(md=Path(args.md).read_text("utf-8") if args.md else None,
+              docx=args.docx, pptx=args.pptx)
+    bad = 0
+    for kind, rep in r.items():
+        if not rep:
+            continue
+        items = rep.get("warnings") or rep.get("issues") or []
+        print(f"[{kind}] {'OK' if rep.get('ok') else 'FOUND ' + str(len(items))}")
+        for it in items:
+            print("   ", it if isinstance(it, str) else
+                  f"{it.get('page', '')} {it.get('type')}: {it.get('detail')}")
+        bad += 0 if rep.get("ok") else 1
+    raise SystemExit(1 if bad else 0)
+
+
 def cmd_set(args):
     cfg = config.load()
     cfg[args.key] = args.value
@@ -157,6 +174,12 @@ def main(argv=None):
     s.add_argument("--no-pptx", action="store_true")
     s.add_argument("--no-answers", action="store_true")
     s.set_defaults(func=cmd_paper)
+
+    s = sub.add_parser("check", help="体检：Markdown / docx / pptx")
+    s.add_argument("--md")
+    s.add_argument("--docx")
+    s.add_argument("--pptx")
+    s.set_defaults(func=cmd_check)
 
     s = sub.add_parser("set", help="改配置，如 jszz set school 胶州四中")
     s.add_argument("key")

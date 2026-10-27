@@ -10,13 +10,17 @@ Cherry Studio …）都能调。
 
 ## 长什么样
 
-| 控制台 | 学案（A4 打印） |
+| 课件封面 | 例题页（右侧红色批注框） |
 |---|---|
-| ![webui](docs/screenshot-webui.png) | ![学案](docs/sample-xuean.png) |
+| ![封面](docs/shots/ppt_cover-01.png) | ![例题](docs/shots/ppt_q-12.png) |
 
-| 试卷（A4 打印） | 课件（16:9） |
+| 学案（A4 打印，含页眉/红条提醒） | 试卷（A4 打印，2×2 选项） |
 |---|---|
-| ![试卷](docs/sample-paper.png) | ![课件](docs/sample-ppt-cover.png) |
+| ![学案](docs/shots/sample_xuean_p-1.png) | ![试卷](docs/shots/sample_paper_p-1.png) |
+
+| 讲评课件（答案 + 解析） | 本地控制台 |
+|---|---|
+| ![讲评](docs/shots/ppt_paper-10.png) | ![控制台](docs/screenshot-webui.png) |
 
 ## 能力
 
@@ -29,6 +33,7 @@ Cherry Studio …）都能调。
 | 5 | 试卷编写 / 组卷（docx，带答案页） | `make_paper_md` `assemble_paper` |
 | 6 | 试卷转讲评 PPT | `make_paper_md(pptx=True)` |
 | 7 | 登录态 / 依赖自检 / 产物下载的本地控制台 | `jszz web` |
+| 9 | 产出体检（越界/溢出/占位符/空白页/表格超宽） | `lint_markdown` · `jszz check` |
 | 8 | 技能包 `jszz.skill`（SKILL.md + 6 篇排版规范） | 下载仓库根目录的 `jszz.skill` |
 
 ## 安装
@@ -104,8 +109,19 @@ jszz paper examples/paper-wuli.md        # → ~/.jszz/out/paper/*.docx / *.pptx
 两套挑战），本工具用 Node 的 `vm` 跑页面脚本来算 cookie，不引浏览器、不装 Playwright。
 出口 IP 被拉黑时仍会失败，这是网络问题，不是代码问题。
 
-**排版参数来自语料。** 学案 A4/宋体12pt/行距1.5/填空式预习；试卷选项四列、题干悬挂缩进、
-答案另页；课件 16:9、正文 28pt、每页 184 字、例题拆「题干页 + 解析页」。
+**排版参数来自语料。** 学案 A4/宋体12pt/行距1.5/填空式预习 + 页眉「编写人/审核/时间」；
+试卷 2×2 选项、题干悬挂缩进、答案另页 + 速查表；课件 16:9、正文 28pt、每页 184 字、
+例题拆「题干页 + 解析页」。
+
+**三色分工是从真实课件拆出来的。** 深蓝=框架（页头/封面块/书脊），青蓝=连接（色带/chip/
+序号块），**红色只标「这里容易错」**（特别提醒、判定要点、`【标签】`）。真实课件里红色
+只出现在这三处——满屏红等于没有红。
+
+**两套页头。** 栏目式用于目标/考情/小结，通栏式（深蓝通栏白字）用于考点/知识点/例题/答案，
+翻页时读者靠页头形态就知道自己在哪一类页面。
+
+**产出体检。** `lint_markdown` 检查写作层（挖空配对、大题分值、选项写法、题号跳号），
+`jszz check` 检查文件层（形状越界、文本框溢出、占位符残留、空白页、表格超宽、页眉缺失）。
 
 ## 目录
 

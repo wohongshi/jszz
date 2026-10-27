@@ -22,6 +22,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+META_KEYS = {
+    "学科", "年级", "课", "课时", "编写", "审核", "时间", "满分", "日期", "说明",
+    "密封线", "命题", "学校", "班级", "姓名", "考号", "来源", "版本", "教材",
+    "满分值", "考试时间", "适用", "类型",
+}
+
+
 @dataclass
 class Block:
     kind: str                     # text | bullet | num | table | image | answer | note
@@ -50,6 +57,38 @@ class Doc:
         yield from self.preface
         for s in self.sections:
             yield from s.blocks
+
+
+LABEL_SPLIT = re.compile(r"(?=(?:【\s*(?:答案|解析|详解|分析|点睛|点评|方法|归纳|规律|"
+                         r"特别提醒|易错提醒|提醒|注意|易错|警示|导语|拓展)\s*】))")
+
+
+def _kind_of_label(text: str) -> str:
+    m = re.match(r"^【\s*([^】]+)\s*】", text.strip())
+    if not m:
+        return "text"
+    lab = m.group(1)
+    if lab in ("特别提醒", "易错提醒", "提醒", "注意", "易错", "警示"):
+        return "tip"
+    if lab in ("点睛", "点评", "方法", "归纳", "规律"):
+        return "insight"
+    if lab in ("答案", "解析", "详解", "分析"):
+        return "answer"
+    return "note"
+
+
+def _resplit(blocks: list[Block]) -> list[Block]:
+    """一段里塞了多个【标签】（常见于复制粘贴）时，拆成多个块。"""
+    out: list[Block] = []
+    for b in blocks:
+        if b.kind in ("text", "answer", "tip", "insight") and b.text.count("【") >= 2:
+            parts = [x.strip() for x in LABEL_SPLIT.split(b.text) if x.strip()]
+            if len(parts) >= 2:
+                for part in parts:
+                    out.append(Block(_kind_of_label(part), text=part))
+                continue
+        out.append(b)
+    return out
 
 
 def parse(md: str) -> Doc:
@@ -84,9 +123,16 @@ def parse(md: str) -> Doc:
         # meta block  > key: value
         if stripped.startswith(">"):
             body = stripped.lstrip("> ").strip()
-            mm = re.match(r"^([\u4e00-\u9fa5A-Za-z ]{1,12})[:：]\s*(.+)$", body)
-            if mm:
-                doc.meta[mm.group(1).strip()] = mm.group(2).strip()
+            # 一行可写多组元信息：> 学科：物理 | 年级：高一 | 课时：1
+            parts = [x.strip() for x in re.split(r"[|｜]", body) if x.strip()]
+            pairs = []
+            for part in parts:
+                mm = re.match(r"^([\u4e00-\u9fa5A-Za-z ]{1,12})[:：]\s*(.*)$", part)
+                if mm and mm.group(1).strip() in META_KEYS:
+                    pairs.append((mm.group(1).strip(), mm.group(2).strip()))
+            if pairs:
+                for k, v in pairs:
+                    doc.meta[k] = v
             elif body:
                 target = cur.blocks if cur else doc.preface
                 target.append(Block("note", body))
@@ -121,9 +167,18 @@ def parse(md: str) -> Doc:
             i += 1
             continue
 
-        # answer marker
-        if re.match(r"^[【\[]\s*(答案|解析|详解|分析|点睛|点评)\s*[】\]]", stripped) or \
-                re.match(r"^(答案|解析|详解|分析|点睛|点评)\s*[:：]", stripped):
+        # 提醒 / 点睛 / 解析 —— 三种语义不同的块
+        if re.match(r"^[【\[]\s*(特别提醒|易错提醒|提醒|注意|易错|警示)\s*[】\]]", stripped):
+            (cur.blocks if cur else doc.preface).append(Block("tip", stripped))
+            i += 1
+            continue
+        if re.match(r"^[【\[]\s*(点睛|点评|方法|归纳|规律)\s*[】\]]", stripped) or \
+                re.match(r"^(点睛|点评)\s*[:：]", stripped):
+            (cur.blocks if cur else doc.preface).append(Block("insight", stripped))
+            i += 1
+            continue
+        if re.match(r"^[【\[]\s*(答案|解析|详解|分析)\s*[】\]]", stripped) or \
+                re.match(r"^(答案|解析|详解|分析)\s*[:：]", stripped):
             (cur.blocks if cur else doc.preface).append(Block("answer", stripped))
             i += 1
             continue
@@ -164,7 +219,16 @@ def parse(md: str) -> Doc:
                     text += " " + nxt_line
             else:
                 text += nxt_line
-        (cur.blocks if cur else doc.preface).append(Block("text", text=text))
+        target = cur.blocks if cur else doc.preface
+        # 紧跟【解析】之后的续段仍算解析（老师常把 (1)(2) 分成多段）
+        kind = "text"
+        if target and target[-1].kind == "answer" and not re.match(r"^[【\[]", text):
+            kind = "answer"
+        target.append(Block(kind, text=text))
+
+    doc.preface = _resplit(doc.preface)
+    for sec in doc.sections:
+        sec.blocks = _resplit(sec.blocks)
     return doc
 
 

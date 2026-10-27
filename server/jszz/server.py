@@ -16,6 +16,7 @@ from .assemble import make_paper as _make_paper
 from .bilibili import BilibiliClient
 from .docx_render import render_paper, render_xuean
 from .pptx_render import build_paper_deck, build_xuean_deck
+from .qa import check as _qa_check
 from .zxxk import ZxxkClient
 
 try:  # mcp >= 2.0
@@ -212,8 +213,10 @@ def make_xuean(markdown: str, name: str = "", docx: bool = True,
     if pptx:
         files["pptx"] = str(build_xuean_deck(md, d / f"{base}.pptx", theme=theme,
                                              school=config.load().get("school", "")))
+    report = _qa_check(md=md, docx=files.get("docx"), pptx=files.get("pptx"))
     return {"ok": True, "files": files, "title": title,
-            "sections": len(re.findall(r"^##\s+", md, re.M))}
+            "sections": len(re.findall(r"^##\s+", md, re.M)),
+            "qa": _qa_summary(report)}
 
 
 @mcp.tool()
@@ -250,8 +253,10 @@ def make_paper_md(markdown: str, name: str = "", docx: bool = True,
     if pptx:
         files["pptx"] = str(build_paper_deck(md, d / f"{base}.pptx", theme=theme,
                                              school=config.load().get("school", "")))
-    return {"ok": True, "files": files, "title": title, "questions":
-            len(re.findall(r"^\s*\d{1,2}[.．、]", md, re.M))}
+    report = _qa_check(md=md, docx=files.get("docx"), pptx=files.get("pptx"))
+    return {"ok": True, "files": files, "title": title,
+            "questions": len(re.findall(r"^\s*\d{1,2}[.．、]", md, re.M)),
+            "qa": _qa_summary(report)}
 
 
 @mcp.tool()
@@ -283,6 +288,29 @@ def assemble_paper(questions_json: str, title: str, duration: int = 90,
 
 
 # ---------------------------------------------------------------- 状态
+@mcp.tool()
+def lint_markdown(markdown: str) -> dict:
+    """写作体检（不生成文件）：挖空是否配对、大题是否写了分值、选项写法、题号是否跳号、有没有答案页。
+
+    在写长文档之前先跑一次，能省掉「生成完才发现结构不对」的返工。
+    """
+    from .qa import check_markdown
+    return check_markdown(markdown)
+
+
+def _qa_summary(report: dict) -> dict:
+    out = {}
+    for k, v in report.items():
+        if not v:
+            continue
+        if k == "markdown":
+            out[k] = {"ok": v["ok"], "warnings": v.get("warnings", [])[:6]}
+        else:
+            out[k] = {"ok": v["ok"], "issues": v.get("issues", [])[:6],
+                      "pages": v.get("pages")}
+    return out
+
+
 @mcp.tool()
 def jszz_status() -> dict:
     """查看本机 jszz 状态：数据目录、已保存的登录 cookie、依赖（yt-dlp/ffmpeg/node）、学校署名。"""
