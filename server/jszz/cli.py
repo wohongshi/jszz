@@ -84,6 +84,9 @@ def cmd_xuean(args):
     files = []
     if not args.no_docx:
         files.append(render_xuean(md, out / f"{base}.docx", school=config.load().get("school", "")))
+        if getattr(args, "answers", False):
+            files.append(render_xuean(md, out / f"{base}-答案版.docx",
+                                      school=config.load().get("school", ""), answers=True))
     if not args.no_pptx:
         files.append(build_xuean_deck(md, out / f"{base}.pptx", theme=args.theme,
                                       school=config.load().get("school", "")))
@@ -161,6 +164,7 @@ def main(argv=None):
     s = sub.add_parser("xuean", help="学案 Markdown → docx + pptx")
     s.add_argument("file")
     s.add_argument("--name")
+    s.add_argument("--answers", action="store_true", help="额外出答案版 docx（红粗下划线填回）")
     s.add_argument("--theme", default="blue")
     s.add_argument("--no-docx", action="store_true")
     s.add_argument("--no-pptx", action="store_true")

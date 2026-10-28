@@ -32,7 +32,8 @@ PAGE_W, PAGE_H = Cm(21.0), Cm(29.7)
 
 
 # ------------------------------------------------------------------ helpers
-def _style_run(run, cn=CN_BODY, en=EN_BODY, size=12, bold=False, color=None, underline=False):
+def _style_run(run, cn=CN_BODY, en=EN_BODY, size: float = 12, bold=False, color=None,
+               underline=False):
     run.font.name = en
     run.font.size = Pt(size)
     run.font.bold = bold
@@ -72,13 +73,14 @@ def _para(doc, text="", *, cn=CN_BODY, en=EN_BODY, size=12, bold=False,
     return p
 
 
-def _blank_run(p, chars: int, size=12):
+def _blank_run(p, chars: int, size: float = 12):
     # 全角空格，1 个 ≈ 1 个汉字宽，下划线连续不断
     r = p.add_run("\u3000" * max(1, chars))
     _style_run(r, CN_BODY, EN_BODY, size, underline=True)
 
 
-LABEL_RE = re.compile(r"^(重点|难点|考点|例\s*\d+|探究[一二三四五六七八九十]?|变式[一二三四五六七八九十]?|思考|提示|归纳|答案|解析)\s*[:：]")
+LABEL_RE = re.compile(r"^(重点|难点|考点|例\s*\d+|探究[一二三四五六七八九十]?|变式[一二三四五六七八九十]?|"
+                      r"思考|提示|归纳|答案|解析|学习聚焦|知识链接|易错警示|方法指导)\s*[:：]")
 
 
 UNITS = ("m/s²", "m/s", "km/h", "kg", "mol", "cm", "mm", "km", "mL", "Pa", "℃",
@@ -91,8 +93,11 @@ def _nb(text: str) -> str:
     return UNIT_RE.sub(lambda m: "\u00a0" + m.group(1), text)
 
 
-def _write_runs(p, text: str, size: float, color=None, bold=False):
-    """Write a paragraph body, turning {{答案}} into underlined blanks."""
+def _write_runs(p, text: str, size: float, color=None, bold=False, *, answers=False):
+    """Write a paragraph body, turning {{答案}} into underlined blanks.
+
+    answers=True 出答案版：答案原文红粗下划线直接填回（真实答案版学案样式）。
+    """
     text = _tidy(_nb(text))
     m = LABEL_RE.match(text)
     if m:
@@ -100,7 +105,13 @@ def _write_runs(p, text: str, size: float, color=None, bold=False):
         text = text[m.end():]
     for kind, val in blanks(text):
         if kind == "blank":
-            _blank_run(p, max(4, min(14, val + 2)), size)
+            if answers and val:
+                r = p.add_run(val)
+                # 真实答案版：红字压在下划线上，不加粗
+                _style_run(r, CN_BODY, EN_BODY, size, False,
+                           RGBColor(0xC0, 0x00, 0x00), underline=True)
+            else:
+                _blank_run(p, max(4, min(14, len(val) + 2)), size)
         else:
             _style_run(p.add_run(val), CN_BODY, EN_BODY, size, bold, color)
 
@@ -176,13 +187,18 @@ def _header(section, *, school="", subject="", grade="", title="",
     pb.paragraph_format.space_after = Pt(0)
     _style_run(pb.add_run(right), CN_HEAD, EN_BODY, 9, bold=True)
 
-    # 去掉表格边框（只留一张隐形网格）
+    # 去掉表格边框（只留一张隐形网格），但底边保留细分隔线（真实学案页眉下的横线）
     tbl_borders = OxmlElement("w:tblBorders")
-    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+    for edge in ("top", "left", "right", "insideH", "insideV"):
         el = OxmlElement(f"w:{edge}")
         el.set(qn("w:val"), "none")
         el.set(qn("w:sz"), "0")
         tbl_borders.append(el)
+    bottom = OxmlElement("w:bottom")
+    bottom.set(qn("w:val"), "single")
+    bottom.set(qn("w:sz"), "6")
+    bottom.set(qn("w:color"), "808080")
+    tbl_borders.append(bottom)
     tblPr.append(tbl_borders)
 
     # 表格后必须跟一个段落，否则 Word/LibreOffice 会把整个页眉判为非法而不显示
@@ -269,10 +285,14 @@ def new_doc(margins=(Cm(1.9), Cm(1.9), Cm(2.0), Cm(2.0))):
 
 
 BIG_SECTION = re.compile(r"^(课前预习案?|课内探究|当堂检测|课堂检测|课后作业|"
-                         r"课后巩固案?|参考答案|答案与解析|答案及解析|答案)$")
+                         r"课后巩固案?|参考答案|答案与解析|答案及解析|答案|"
+                         r"课标要求|时空定位|重要概念解析|知识梳理|要点回顾|课程标准|"
+                         r"素养提升|学以致用|精读教材|教考衔接|练透考法|归纳拓展|"
+                         r"考情解读|考点提取|写作提升|晨诵|暮读|晚写)$")
 
 
-def _heading(doc, text, level, *, center=False, size=None, rule=False, big=False):
+def _heading(doc, text, level, *, center=False, size=None, rule=False, big=False,
+             color=None):
     """栏目标题：普通栏目黑体 12pt 左对齐；大栏目（课前预习案…）黑体 15pt 居中。"""
     p = doc.add_paragraph(style=f"Heading {level}")
     pf = p.paragraph_format
@@ -285,19 +305,20 @@ def _heading(doc, text, level, *, center=False, size=None, rule=False, big=False
     if level == 2 and not big and not text.startswith("【"):
         text = f"【{text}】"
     _style_run(p.add_run(text), CN_HEAD, EN_BODY,
-               size or (15 if big else 12), bold=True)
+               size or (15 if big else 12), bold=True, color=color)
     if rule:
         _rule(p)
     return p
 
 
 # ------------------------------------------------------------------ blocks
-def _render_blocks(doc, blocks, *, body_size=12, indent=0.74, line=1.5):
+def _render_blocks(doc, blocks, *, body_size=12, indent=0.74, line=1.5,
+                   answers: bool = False):
     for b in blocks:
         if b.kind == "text":
             p = _para(doc, "", size=body_size, first_indent=indent, line=line,
                       space_after=2)
-            _write_runs(p, b.text, body_size)
+            _write_runs(p, b.text, body_size, answers=answers)
         elif b.kind == "note":
             _para(doc, b.text, size=body_size - 1.5, color=GREY, first_indent=indent,
                   line=1.3, space_after=2)
@@ -306,7 +327,7 @@ def _render_blocks(doc, blocks, *, body_size=12, indent=0.74, line=1.5):
                       hanging=indent, line=line, space_after=3)
             if b.kind == "bullet":
                 _style_run(p.add_run("▪ "), CN_BODY, EN_BODY, body_size - 1)
-            _write_runs(p, b.text, body_size)
+            _write_runs(p, b.text, body_size, answers=answers)
         elif b.kind == "table":
             if not b.rows:
                 continue
@@ -365,10 +386,14 @@ def _render_blocks(doc, blocks, *, body_size=12, indent=0.74, line=1.5):
 
 
 # ------------------------------------------------------------------ 学案
-def render_xuean(md: str, out_path: str | Path, *, school: str = "") -> Path:
+def render_xuean(md: str, out_path: str | Path, *, school: str = "",
+                 answers: bool = False) -> Path:
+    """answers=True 出答案版：{{挖空}} 红粗下划线填回答案（真实答案版学案样式）。"""
     d = parse(md)
     doc = new_doc()
     title = d.title or "学案"
+    if answers and "答案" not in title:
+        title += "（答案版）"
     _header(doc.sections[0], school=school, subject=d.meta.get("学科", ""),
             grade=d.meta.get("年级", ""), title=d.meta.get("课") or "",
             author=d.meta.get("编写", ""), reviewer=d.meta.get("审核", ""),
@@ -386,11 +411,11 @@ def render_xuean(md: str, out_path: str | Path, *, school: str = "") -> Path:
               space_after=6, line=1.1)
 
     if d.preface:
-        _render_blocks(doc, d.preface)
+        _render_blocks(doc, d.preface, answers=answers)
 
     for s in d.sections:
         if not s.title:
-            _render_blocks(doc, s.blocks)
+            _render_blocks(doc, s.blocks, answers=answers)
             continue
         if s.level == 2:
             if BIG_SECTION.match(s.title):
@@ -398,8 +423,12 @@ def render_xuean(md: str, out_path: str | Path, *, school: str = "") -> Path:
             else:
                 _heading(doc, s.title, 2, center=False)
         else:
-            _heading(doc, s.title, 3)
-        _render_blocks(doc, s.blocks)
+            # 真实学案「知识点一：…」用蓝色加粗小标题
+            if re.match(r"^知识点", s.title):
+                _heading(doc, s.title, 3, color=RGBColor(0x00, 0x00, 0xC0))
+            else:
+                _heading(doc, s.title, 3)
+        _render_blocks(doc, s.blocks, answers=answers)
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -440,13 +469,19 @@ def _seal_line(doc):
 
 
 def _expand_options(blocks: list[Block]) -> list[Block]:
-    """把 'A.甲　B.乙　C.丙　D.丁' 这种一行多选项拆成独立块。"""
+    """把 'A.甲　B.乙　C.丙　D.丁' 这种一行多选项拆成独立块。
+
+    前缀（题干「1．…（　　）」）保留为独立块——曾把题干整段丢掉。
+    """
     out = []
     for b in blocks:
         if b.kind in ("text", "bullet") and b.text:
             t = b.text.strip()
             marks = list(INLINE_OPT.finditer(t))
             if len(marks) >= 3:
+                head = t[:marks[0].start()].strip()
+                if head:
+                    out.append(Block(b.kind, text=head))
                 for i, m in enumerate(marks):
                     end = marks[i + 1].start() if i + 1 < len(marks) else len(t)
                     piece = t[m.start():end].strip()
@@ -585,10 +620,14 @@ def _option_row(doc, row: list[Block]):
         return sum(1.0 if ord(c) > 127 else 0.55 for c in t)
 
     total = sum(cw(b.text.strip()) for b in row) + 2.0 * (len(row) - 1)
-    # 真卷多为 2×2：只有四项都很短（≤38 字宽）才排成一行四列
-    per = 4 if total <= 38 and len(row) == 4 else (2 if len(row) >= 2 else 1)
-    if len(row) <= 2:
+    # 真卷实测：短选项 2×2；含公式/长选项单列竖排（物理月考卷每项一行）
+    maxw = max((cw(b.text.strip()) for b in row), default=0)
+    if len(row) <= 2 or maxw > 22:
         per = 1
+    elif total <= 38 and len(row) == 4:
+        per = 4
+    else:
+        per = 2
     usable = doc.sections[0].page_width - doc.sections[0].left_margin - doc.sections[0].right_margin
     rows = [row[i:i + per] for i in range(0, len(row), per)]
     table = doc.add_table(rows=len(rows), cols=per)

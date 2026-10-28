@@ -239,15 +239,18 @@ def parse(md: str) -> Doc:
     return doc
 
 
-def blanks(text: str) -> list[str]:
-    """Split a 学案 paragraph into ('text', s) / ('blank', width) runs from {{...}}."""
+def blanks(text: str) -> list[tuple[str, str]]:
+    """Split a 学案 paragraph into ('text', s) / ('blank', 答案原文) runs from {{...}}.
+
+    blank 的 val 是挖空处的答案原文（真实答案版学案把答案红粗下划线填回）。
+    """
     out = []
     for part in re.split(r"(\{\{[^}]*\}\})", text):
         if not part:
             continue
         if part.startswith("{{") and part.endswith("}}"):
             inner = part[2:-2].strip()
-            out.append(("blank", max(len(inner), 2)))
+            out.append(("blank", inner))
         else:
             out.append(("text", part))
     return out

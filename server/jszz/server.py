@@ -223,8 +223,11 @@ def zxxk_knowledge_questions(knowledge_id: str, subject_prefix: str = "gzsx",
 # ---------------------------------------------------------------- 生成
 @mcp.tool()
 def make_xuean(markdown: str, name: str = "", docx: bool = True,
-               pptx: bool = True, theme: str = "blue") -> dict:
+               pptx: bool = True, theme: str = "blue", answers: bool = False) -> dict:
     """学案 Markdown → 可打印 docx + 新授课 PPT（16:9）。
+
+    answers=True 额外出一份「答案版」docx：{{挖空}} 红粗下划线填回答案
+    （真实答案版学案样式，如《师说》复习题答案版、第9课学案答案）。
 
     推荐的 Markdown 结构：
       # 课题
@@ -252,6 +255,10 @@ def make_xuean(markdown: str, name: str = "", docx: bool = True,
     if docx:
         files["docx"] = str(render_xuean(md, d / f"{base}.docx",
                                          school=config.load().get("school", "")))
+        if answers:
+            files["docx_answers"] = str(render_xuean(
+                md, d / f"{base}-答案版.docx",
+                school=config.load().get("school", ""), answers=True))
     if pptx:
         files["pptx"] = str(build_xuean_deck(md, d / f"{base}.pptx", theme=theme,
                                              school=config.load().get("school", "")))
