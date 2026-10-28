@@ -1,14 +1,17 @@
 """16:9 课件渲染：学案 → 新授课 PPT，试卷 → 讲评 PPT。
 
-版式来自 318 份真实课件的统计 + 6 份逐页拆解（物理一轮 / 历史一轮 / 化学 / 生物）：
-  * 16:9；正文 24–28pt；中文 微软雅黑，西文 Times New Roman
-  * 三色分工：深蓝=框架/页头，青蓝=连接/提示，**红=易错/高频**（红只用于警示）
-  * 内页两套页头：栏目式（主题 · 子主题）与通栏式（考点一 …，深蓝通栏 + 白字）
-  * 固定底部色带 + 页脚「学校 · 课题 | 页码」
-  * 例题 = 序号块 + 题源小字 + 选项网格 + 右侧红色批注框
+版式来自 U 盘 17 份真实课件（每科 2–3 份：早读/常规课/习题讲评）的转图逐页目视
++ slide XML 全量统计（837 份语料的配色/字号/形状密度/页头形态）：
+  * 16:9，白底；正文 24–28pt（真实课件 28pt 一统）
+  * 红=答案/纠错/易错（六科通吃），蓝=标题/要点/解析，黄=高亮标签
+  * 页头六式按学科取证：语文提示横条 / 数学细线框 / 英语青色块 / 物理红标签 /
+    化学蓝胶囊 / 生物绿块栏目
+  * 例题页：红「例N」标签 + 题源小字 + 选项网格 + 右侧红色批注框
+  * 物理/化学页码方块导航（真实课件的页码按钮条）
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -191,19 +194,61 @@ class Deck:
 
     # ------------------------------------------------------------ chrome
     def _chrome(self, slide, *, band: bool = True):
+        # 真实课件页脚取证：物理/化学用页码方块导航条；英语用右下双胶囊标签
+        if self.s.key in ("physics", "chemistry") and band:
+            # 页码方块（当前页高亮蓝块）——总数未知，只放当前页 + �后退/前进占位，保持每页一致
+            bw = Inches(0.34)
+            yb = H - Inches(0.52)
+            x0 = W - Inches(0.6) - bw * 3 - Inches(0.12)
+            for i, lb in enumerate(["‹", str(self.n), "›"]):
+                x = x0 + (bw + Inches(0.06)) * i
+                cur = (i == 1)
+                self._rect(slide, x, yb, bw, Inches(0.32),
+                           self.s.accent if cur else _rgb("E4E9F0"),
+                           shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.18)
+                tb, tf, p = self._text(slide, x, yb + Inches(0.02), bw, Inches(0.3),
+                                       size=10, align=PP_ALIGN.CENTER,
+                                       anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p, lb, size=10, bold=cur,
+                          color=self.s.white if cur else _rgb("6B7785"))
+            tb, tf, p = self._text(slide, Inches(0.6), yb, Inches(8.2), Inches(0.3),
+                                   size=10, anchor=MSO_ANCHOR.MIDDLE)
+            school = "" if (self.school and self.school in (self.footer or "")) else self.school
+            label = " · ".join(x for x in [school, self.footer] if x)
+            if label:
+                self._run(p, label, size=10, color=_rgb("8A94A6"))
+            return
+
         if band:
             self._rect(slide, 0, H - Inches(0.13), W, Inches(0.13), self.t.accent)
         y = H - Inches(0.56)
-        tb, tf, p = self._text(slide, Inches(0.6), y, Inches(9.4), Inches(0.3), size=10)
+        tb, tf, p = self._text(slide, Inches(0.6), y, Inches(8.2), Inches(0.3), size=10)
         school = "" if (self.school and self.school in (self.footer or "")) else self.school
         label = " · ".join(x for x in [school, self.footer] if x)
         if label:
             self._run(p, label, size=10, color=_rgb("8A94A6"))
+        if self.s.key == "english":
+            # 右下双胶囊标签（真实英语课件每页固定）
+            x = W - Inches(3.55)
+            for lb in ("核心词汇突破", "重点句型透视"):
+                cw = Inches(1.62)
+                self._rect(slide, x, y - Inches(0.04), cw, Inches(0.34),
+                           _rgb("F2F4F8"), shape=MSO_SHAPE.ROUNDED_RECTANGLE,
+                           radius=0.4)
+                tb3, tf3, p3 = self._text(slide, x, y - Inches(0.03), cw, Inches(0.32),
+                                          size=9, align=PP_ALIGN.CENTER,
+                                          anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p3, lb, size=9, bold=True, color=_rgb("6B7280"))
+                x += cw + Inches(0.12)
+            tb2, tf2, p2 = self._text(slide, W - Inches(0.55), y, Inches(0.35),
+                                      Inches(0.3), size=10, align=PP_ALIGN.RIGHT)
+            self._run(p2, str(self.n), size=10, color=_rgb("8A94A6"))
+            return
         tb2, tf2, p2 = self._text(slide, W - Inches(1.25), y, Inches(0.75), Inches(0.3),
                                   size=10, align=PP_ALIGN.RIGHT)
         self._run(p2, str(self.n), size=10, color=_rgb("8A94A6"))
 
-    def _chip(self, slide, text: str, *, x=None, y=Inches(0.5), dark=False, max_chars=14):
+    def _chip(self, slide, text: str, *, x=None, y=Inches(0.5), dark=False, max_chars=22):
         if len(text) > max_chars:
             text = text[: max_chars - 1] + "…"
         cw = Inches(0.185 * len(text) + 0.34)
@@ -217,93 +262,111 @@ class Deck:
                   color=self.t.white if dark else self.t.accent)
 
     def _header(self, slide, title: str, *, kicker: str = ""):
-        """五种页头：tick 细线+竖标 / bar 深色通栏 / bracket 宋体书名号 / band 青绿横幅 / ribbon 双色条。"""
+        """六种页头（按真实课件取证）：banner 提示横条 / frame 细线框 / cyanblock 青色块
+        / nav 红标签行 / capsule 蓝胶囊 / greenblock 绿块栏目。"""
         kind = self.s.header
         size = 28 if len(title) <= 18 else (24 if len(title) <= 26 else 21)
         ss.draw_deco(slide, self.s)
+        # kicker 与标题互为子串时不再重复显示（避免"考点二 xxx"标两次）
+        if kicker and (kicker.strip() in title.strip() or title.strip() in kicker.strip()):
+            kicker = ""
 
-        if kind == "bar":
-            self._rect(slide, 0, 0, W, Inches(0.86), self.s.main)
-            self._rect(slide, 0, Inches(0.86), W, Inches(0.04), self.s.accent)
-            tb, tf, p = self._text(slide, Inches(0.6), Inches(0.14), W - Inches(4.1),
-                                   Inches(0.58), size=size, anchor=MSO_ANCHOR.MIDDLE)
-            self._rich(p, title, size=size, color=self.s.white, bold=True)
-            if kicker and kicker.strip() != title.strip():
-                self._chip(slide, kicker, y=Inches(0.22), dark=True)
+        if kind == "banner":
+            # 语文：顶部提示横条（红字提示 + 黄底高亮），下接大标题
+            self._rect(slide, 0, 0, W, Inches(0.5), self.s.light)
+            self._rect(slide, 0, Inches(0.5), W, Emu(12700), self.s.accent)
+            tb0, tf0, p0 = self._text(slide, Inches(0.6), Inches(0.08), W - Inches(1.2),
+                                      Inches(0.36), size=13)
+            hint = kicker if (kicker and kicker.strip() != title.strip()) else self.footer
+            self._run(p0, "温馨提示：", size=13, bold=True, color=self.s.warn)
+            self._run(p0, (hint or "全体齐声朗诵，落实默写")[:30], size=13, color=self.s.ink)
+            tb, tf, p = self._text(slide, Inches(0.6), Inches(0.66), W - Inches(3.2),
+                                   Inches(0.78), size=size, anchor=MSO_ANCHOR.MIDDLE)
+            self._run(p, title, size=size, bold=True, color=self.s.ink,
+                      cn=self.s.font_head)
             return
 
-        if kind == "bracket":
-            # 语文：宋体标题 + 上下细墨线 + 左侧朱砂短竖
-            self._rect(slide, 0, Inches(0.40), W, Emu(12700), _rgb("BCA98C"))
-            self._rect(slide, 0, Inches(1.24), W, Emu(12700), _rgb("BCA98C"))
-            self._rect(slide, Inches(0.62), Inches(0.58), Inches(0.06), Inches(0.48),
-                       self.s.accent)
-            tb, tf, p = self._text(slide, Inches(0.85), Inches(0.55), W - Inches(2.8),
-                                   Inches(0.55), size=size, anchor=MSO_ANCHOR.MIDDLE)
-            for i, line in enumerate(_soft_wrap(title, 22).split("\v")):
-                if i:
-                    p.add_line_break()
-                self._run(p, line, size=size, bold=True, color=self.s.main,
-                          cn=self.s.font_head)
+        if kind == "frame":
+            # 数学：圆角细线框栏目名 + 红色小节标签
+            self._rect(slide, Inches(0.55), Inches(0.42), W - Inches(1.1), Inches(0.82),
+                       self.s.white, line=self.s.accent, shape=MSO_SHAPE.ROUNDED_RECTANGLE,
+                       radius=0.16, line_w=1.25)
+            tb, tf, p = self._text(slide, Inches(0.95), Inches(0.5), W - Inches(4.2),
+                                   Inches(0.66), size=size, anchor=MSO_ANCHOR.MIDDLE)
+            self._rich(p, title, size=size, color=self.s.main, bold=True)
             if kicker and kicker.strip() != title.strip():
-                tb2, tf2, p2 = self._text(slide, W - Inches(3.6), Inches(0.62),
-                                          Inches(3.0), Inches(0.4), size=13,
-                                          align=PP_ALIGN.RIGHT)
-                self._run(p2, f"—— {kicker}", size=13, color=self.s.accent,
-                          cn=self.s.font_head)
+                self._chip(slide, kicker, y=Inches(0.62))
             return
 
-        if kind == "band":
-            # 生物：青绿横幅 + 四栏栏目感
-            self._rect(slide, 0, 0, W, Inches(0.78), self.s.main)
-            self._rect(slide, 0, Inches(0.78), W, Inches(0.05), self.s.accent)
-            tb, tf, p = self._text(slide, Inches(0.6), Inches(0.12), W - Inches(3.6),
-                                   Inches(0.54), size=size, anchor=MSO_ANCHOR.MIDDLE)
-            self._run(p, title, size=size, bold=True, color=self.s.white)
+        if kind == "cyanblock":
+            # 英语：青色块栏目标题（【课前背记】式），标题前置方括号
+            tw = Inches(0.34 * (len(title) + 2) + 0.42)
+            self._rect(slide, Inches(0.6), Inches(0.4), min(tw, W - Inches(3.6)),
+                       Inches(0.62), self.s.accent, shape=MSO_SHAPE.ROUNDED_RECTANGLE,
+                       radius=0.12)
+            tb, tf, p = self._text(slide, Inches(0.6), Inches(0.42),
+                                   min(tw, W - Inches(3.6)), Inches(0.58), size=min(size, 23),
+                                   align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+            self._run(p, f"【{title}】", size=min(size, 23), bold=True, color=self.s.white)
             if kicker and kicker.strip() != title.strip():
-                kw = Inches(0.17 * len(kicker) + 0.4)
-                self._rect(slide, W - kw - Inches(0.55), Inches(0.19), kw, Inches(0.4),
-                           self.s.accent, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
-                tb2, tf2, p2 = self._text(slide, W - kw - Inches(0.55), Inches(0.21), kw,
-                                          Inches(0.36), size=11, align=PP_ALIGN.CENTER,
-                                          anchor=MSO_ANCHOR.MIDDLE)
-                self._run(p2, kicker, size=11, bold=True, color=self.s.white)
+                tb2, tf2, p2 = self._text(slide, Inches(0.6) + min(tw, W - Inches(3.6)) + Inches(0.2),
+                                          Inches(0.5), Inches(4.2), Inches(0.44), size=13)
+                self._run(p2, kicker, size=13, bold=True, color=self.s.warn)
             return
 
-        if kind == "ribbon":
-            # 英语：左深右粉双色条
-            self._rect(slide, 0, 0, W * 0.62, Inches(0.1), self.s.main)
-            self._rect(slide, W * 0.62, 0, W * 0.38, Inches(0.1), self.s.accent)
-            tb, tf, p = self._text(slide, Inches(0.6), Inches(0.42), W - Inches(3.2),
-                                   Inches(0.7), size=size, anchor=MSO_ANCHOR.MIDDLE)
-            self._run(p, title, size=size, bold=True, color=self.s.main)
+        if kind == "capsule":
+            # 化学：蓝胶囊标题 + 红字讲次小标
+            tw = Inches(0.33 * len(title) + 0.72)
+            self._rect(slide, Inches(0.6), Inches(0.38), min(tw, W - Inches(3.8)),
+                       Inches(0.64), self.s.accent, shape=MSO_SHAPE.ROUNDED_RECTANGLE,
+                       radius=0.32)
+            tb, tf, p = self._text(slide, Inches(0.6), Inches(0.4),
+                                   min(tw, W - Inches(3.8)), Inches(0.6), size=min(size, 23),
+                                   align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+            self._run(p, title, size=min(size, 23), bold=True, color=self.s.white)
             if kicker and kicker.strip() != title.strip():
-                tb2, tf2, p2 = self._text(slide, W - Inches(3.4), Inches(0.5),
-                                          Inches(2.85), Inches(0.5), size=12,
-                                          align=PP_ALIGN.RIGHT)
-                self._run(p2, kicker, size=12, bold=True, color=self.s.accent)
+                tb2, tf2, p2 = self._text(slide, Inches(0.6) + min(tw, W - Inches(3.8)) + Inches(0.24),
+                                          Inches(0.5), Inches(4.4), Inches(0.44), size=13)
+                self._run(p2, kicker, size=13, bold=True, color=self.s.warn)
             return
 
-        # tick（数学）：细线 + 左侧实心方块 + kicker chip
-        self._rect(slide, 0, 0, W, Inches(0.09), self.s.main)
-        self._rect(slide, Inches(0.6), Inches(0.5), Inches(0.14), Inches(0.14),
-                   self.s.accent)
-        self._rect(slide, Inches(0.6), Inches(0.72), Inches(0.14), Inches(0.14),
-                   self.s.accent)
-        tb, tf, p = self._text(slide, Inches(0.92), Inches(0.44), W - Inches(3.0),
-                               Inches(0.68), size=size, anchor=MSO_ANCHOR.MIDDLE)
+        if kind == "greenblock":
+            # 生物：绿色块栏目名（从社会中来 / 练一练 式）+ 黄荧光提示
+            tw = Inches(0.34 * len(title) + 0.6)
+            self._rect(slide, Inches(0.6), Inches(0.4), min(tw, W - Inches(3.8)),
+                       Inches(0.62), self.s.main, shape=MSO_SHAPE.ROUNDED_RECTANGLE,
+                       radius=0.1)
+            tb, tf, p = self._text(slide, Inches(0.6), Inches(0.42),
+                                   min(tw, W - Inches(3.8)), Inches(0.58), size=min(size, 23),
+                                   align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+            self._run(p, title, size=min(size, 23), bold=True, color=self.s.white)
+            if kicker and kicker.strip() != title.strip():
+                kw = Inches(0.17 * len(kicker) + 0.5)
+                self._rect(slide, Inches(0.6) + min(tw, W - Inches(3.8)) + Inches(0.22),
+                           Inches(0.5), kw, Inches(0.42), _rgb("FFF2CC"),
+                           shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.28)
+                tb2, tf2, p2 = self._text(slide, Inches(0.6) + min(tw, W - Inches(3.8)) + Inches(0.22),
+                                          Inches(0.52), kw, Inches(0.38), size=12,
+                                          align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p2, kicker, size=12, bold=True, color=_rgb("8A6D1B"))
+            return
+
+        # nav（物理/通用）：标题左 + 红「标签」行 + 细分隔线（真实物理课件页头）
+        tb, tf, p = self._text(slide, Inches(0.6), Inches(0.38), W - Inches(3.6),
+                               Inches(0.72), size=size, anchor=MSO_ANCHOR.MIDDLE)
         self._rich(p, title, size=size, color=self.s.main, bold=True)
         if kicker and kicker.strip() != title.strip():
-            self._chip(slide, kicker)
+            self._chip(slide, kicker, y=Inches(0.52))
+        self._rect(slide, Inches(0.6), Inches(1.22), W - Inches(1.2), Emu(9525),
+                   _rgb("D8DEE8"))
 
     def _header_band(self, slide, title: str, *, tags: list[str] | None = None):
-        """通栏式页头：深蓝色块通栏 + 白字标题 + 右上小标签（考点/知识点/例题页）。"""
-        self._rect(slide, 0, 0, W, Inches(0.9), self.t.main)
-        self._rect(slide, 0, Inches(0.9), W, Inches(0.05), self.t.accent)
+        """例题/解析页页头（真实课件取证：白底 + 学科色标题 + 红标签 + 细线，不做深色通栏）。"""
+        self._rect(slide, 0, 0, W, Inches(0.09), self.t.main)
         size = 26 if len(title) <= 20 else (22 if len(title) <= 28 else 19)
-        tb, tf, p = self._text(slide, Inches(0.6), Inches(0.15), W - Inches(4.1),
-                               Inches(0.6), size=size, anchor=MSO_ANCHOR.MIDDLE)
-        self._run(p, title, size=size, bold=True, color=self.t.white)
+        tb, tf, p = self._text(slide, Inches(0.6), Inches(0.32), W - Inches(4.6),
+                               Inches(0.62), size=size, anchor=MSO_ANCHOR.MIDDLE)
+        self._run(p, title, size=size, bold=True, color=self.t.main)
         if tags:
             tag_list, seen = [], set()
             for x in tags:
@@ -316,13 +379,15 @@ class Deck:
                 tg = tg if len(tg) <= 11 else tg[:10] + "…"
                 cw = Inches(0.19 * len(tg) + 0.36)
                 x_cursor -= cw
-                self._rect(slide, x_cursor, Inches(0.24), cw, Inches(0.4),
-                           _rgb("2E4A78"), shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
-                tb2, tf2, p2 = self._text(slide, x_cursor, Inches(0.26), cw, Inches(0.36),
+                self._rect(slide, x_cursor, Inches(0.42), cw, Inches(0.4),
+                           self.t.warn, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+                tb2, tf2, p2 = self._text(slide, x_cursor, Inches(0.44), cw, Inches(0.36),
                                           size=11, align=PP_ALIGN.CENTER,
                                           anchor=MSO_ANCHOR.MIDDLE)
                 self._run(p2, tg, size=11, bold=True, color=self.t.white)
                 x_cursor -= Inches(0.1)
+        self._rect(slide, Inches(0.6), Inches(1.04), W - Inches(1.2), Emu(9525),
+                   _rgb("D8DEE8"))
 
     def _spine(self, slide, text: str, *, y=Inches(1.55), h=Inches(2.4), x=Inches(0.24)):
         """左侧竖排书脊标签（真实课件用它标页面角色）。"""
@@ -348,81 +413,143 @@ class Deck:
     # ------------------------------------------------------------ slides
     def cover(self, title: str, subtitle: str = "", meta: str = "", tag: str = "",
               index: str = ""):
-        """六种封面版式：vertical / grid / split / ruler / molecule / cell。"""
+        """六种封面版式：paper / tags / aims / orbit / photo / radial（+ split 兜底）。"""
         s = self._blank()
         kind = self.s.cover
         title = _soft_wrap(title, 13)
         longest = max(len(x) for x in title.split("\v"))
         tsize = int(min(42, max(20, (W * 0.47) / 914400.0 * 72.0 / max(longest, 1) * 0.92)))
 
-        if kind == "vertical":
+        if kind == "paper":
+            # 语文：象牙白纸感 + 顶部提示横条 + 黄底篇目标签 + 红字讲次（早读课件取证）
             self._rect(s, 0, 0, W, H, self.s.paper)
-            self._rect(s, 0, 0, W, Inches(0.09), self.s.main)
-            self._rect(s, 0, H - Inches(0.09), W, Inches(0.09), self.s.accent)
-            # 竖排标题：一列到底（关闭自动换行，字号按字数缩放）
-            flat = title.replace("\v", "")
-            vlen = max(len(flat), 1)
-            vsize = 34 if vlen <= 10 else (28 if vlen <= 13 else (24 if vlen <= 16 else 20))
-            tx = W - Inches(2.15)
-            tb, tf, p = self._text(s, tx, Inches(1.05), Inches(1.5), Inches(5.2),
-                                   size=vsize, align=PP_ALIGN.CENTER,
-                                   anchor=MSO_ANCHOR.TOP, vertical=True, line_spacing=1.0)
-            tf.word_wrap = False
-            self._run(p, flat, size=vsize, bold=True, color=self.s.main)
-            # 朱砂印章
-            seal_y = min(Inches(5.55), Inches(1.05) + Inches(vsize / 72.0) * vlen + Inches(0.35))
-            seal_x = tx + Inches(0.4)
-            self._rect(s, seal_x, seal_y, Inches(0.72), Inches(0.72),
-                       self.s.accent, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.08)
-            tb2, tf2, p2 = self._text(s, seal_x, seal_y + Inches(0.1), Inches(0.72),
-                                      Inches(0.55), size=14, align=PP_ALIGN.CENTER,
-                                      anchor=MSO_ANCHOR.MIDDLE)
-            self._run(p2, "语\n文", size=15, bold=True, color=self.s.white)
-            # 左侧：讲次 + 副标题 + 元信息
+            self._rect(s, 0, 0, W, Inches(0.5), self.s.light)
+            self._rect(s, 0, Inches(0.5), W, Emu(12700), self.s.accent)
+            tb0, tf0, p0 = self._text(s, Inches(0.62), Inches(0.08), W - Inches(1.24),
+                                      Inches(0.36), size=13)
+            self._run(p0, "温馨提示：", size=13, bold=True, color=self.s.warn)
+            self._run(p0, "全体齐声朗诵，落实背诵默写", size=13, color=self.s.ink)
+            if tag:
+                tw = Inches(0.32 * len(tag) + 0.5)
+                self._rect(s, Inches(0.95), Inches(1.2), tw, Inches(0.52),
+                           _rgb("FFE699"), shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.25)
+                tb1, tf1, p1 = self._text(s, Inches(0.95), Inches(1.23), tw, Inches(0.46),
+                                          size=15, align=PP_ALIGN.CENTER,
+                                          anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p1, tag, size=15, bold=True, color=self.s.ink)
+            tb, tf, p = self._text(s, Inches(0.95), Inches(2.0), W * 0.66, Inches(2.3),
+                                   size=tsize, line_spacing=1.28)
+            for i, line in enumerate(title.split("\v")):
+                if i:
+                    p.add_line_break()
+                self._run(p, line, size=tsize, bold=True, color=self.s.ink,
+                          cn=self.s.font_head)
+            self._rect(s, Inches(0.98), Inches(4.42), Inches(1.1), Emu(28575), self.s.accent)
             if index:
-                tb3, tf3, p3 = self._text(s, Inches(0.95), Inches(1.15), Inches(6.2),
-                                          Inches(0.6), size=18)
-                self._run(p3, index, size=18, bold=True, color=self.s.accent)
+                tb2, tf2, p2 = self._text(s, Inches(0.95), Inches(4.62), Inches(6.2),
+                                          Inches(0.55), size=18)
+                self._run(p2, index, size=18, bold=True, color=self.s.warn)
             if subtitle:
-                tb4, tf4, p4 = self._text(s, Inches(0.95), Inches(1.85), Inches(6.4),
-                                          Inches(0.7), size=20)
-                self._run(p4, subtitle, size=20, color=_rgb("4A4034"))
-            self._rect(s, Inches(0.98), Inches(2.75), Inches(1.1), Emu(28575), self.s.accent)
+                tb3, tf3, p3 = self._text(s, Inches(0.95), Inches(5.22), Inches(6.4),
+                                          Inches(0.6), size=19)
+                self._run(p3, subtitle, size=19, color=_rgb("4A4034"))
             if meta:
-                tb5, tf5, p5 = self._text(s, Inches(0.95), Inches(3.0), Inches(6.4),
-                                          Inches(2.6), size=13, line_spacing=1.6)
-                self._run(p5, meta, size=13, color=_rgb("6B6257"))
+                tb4, tf4, p4 = self._text(s, Inches(0.95), Inches(5.92), Inches(6.4),
+                                          Inches(0.5), size=13)
+                self._run(p4, meta, size=13, color=_rgb("6B6257"))
+            # 班级/主备人/日期 三栏（真实学案封面信息栏）
+            fy = Inches(6.45)
+            for i, lb in enumerate(["班级：", "主备人：", "日期："]):
+                fx = Inches(0.95) + Inches(2.35) * i
+                tb5, tf5, p5 = self._text(s, fx, fy, Inches(2.1), Inches(0.34), size=12)
+                self._run(p5, lb, size=12, color=self.s.accent)
+                self._run(p5, "　" * 6, size=12, color=self.s.ink, underline=True)
 
-        elif kind == "grid":
+        elif kind == "tags":
+            # 数学：白底 + 悬挂式标题牌（细线框）+ 彩色圆角标签组（真实课件封面取证）
             self._rect(s, 0, 0, W, H, self.s.white)
             ss.draw_deco(s, self.s)
-            self._rect(s, 0, 0, Inches(0.14), H, self.s.main)
             self._rect(s, 0, 0, W, Inches(0.1), self.s.main)
+            # 标题牌：圆角细线框
+            self._rect(s, Inches(1.4), Inches(1.35), W - Inches(2.8), Inches(2.5),
+                       self.s.white, line=self.s.accent, shape=MSO_SHAPE.ROUNDED_RECTANGLE,
+                       radius=0.06, line_w=1.5)
             if index:
-                tb, tf, p = self._text(s, Inches(0.95), Inches(1.05), Inches(5.6),
-                                       Inches(0.7), size=16)
-                self._run(p, index, size=16, bold=True, color=self.s.accent)
-            tb, tf, p = self._text(s, Inches(0.95), Inches(2.0), W * 0.58, Inches(2.2),
-                                   size=tsize, line_spacing=1.2)
+                tb, tf, p = self._text(s, Inches(1.4), Inches(1.62), W - Inches(2.8),
+                                       Inches(0.55), size=17, align=PP_ALIGN.CENTER)
+                self._run(p, index, size=17, bold=True, color=self.s.accent)
+            tb, tf, p = self._text(s, Inches(1.7), Inches(2.25), W - Inches(3.4),
+                                   Inches(1.5), size=tsize, align=PP_ALIGN.CENTER,
+                                   line_spacing=1.22, anchor=MSO_ANCHOR.MIDDLE)
             for i, line in enumerate(title.split("\v")):
                 if i:
                     p.add_line_break()
                 self._run(p, line, size=tsize, bold=True, color=self.s.main)
-            self._rect(s, Inches(0.98), Inches(3.95), Inches(0.9), Inches(0.09),
-                       self.s.accent)
             if subtitle:
-                tb2, tf2, p2 = self._text(s, Inches(0.98), Inches(4.25), W * 0.5,
-                                          Inches(0.8), size=20)
+                tb2, tf2, p2 = self._text(s, Inches(1.4), Inches(4.15), W - Inches(2.8),
+                                          Inches(0.7), size=20, align=PP_ALIGN.CENTER)
                 self._run(p2, subtitle, size=20, color=_rgb("4A5568"))
+            # 彩色圆角标签组（5 个，真实课件封面的章节标签云）
+            labels = ["知识梳理", "典型例题", "变式训练", "当堂检测", "课堂小结"]
+            lw = Inches(1.72)
+            total = lw * 5 + Inches(0.24) * 4
+            x0 = (W - total) / 2
+            for i, lb in enumerate(labels):
+                x = x0 + (lw + Inches(0.24)) * i
+                self._rect(s, x, Inches(5.05), lw, Inches(0.56), self.s.white,
+                           line=[self.s.main, self.s.accent, self.s.warn,
+                                 self.s.gold, _rgb("2E8B57")][i],
+                           shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.4, line_w=1.5)
+                tb3, tf3, p3 = self._text(s, x, Inches(5.08), lw, Inches(0.5), size=13,
+                                          align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p3, lb, size=13, bold=True,
+                          color=[self.s.main, self.s.accent, self.s.warn,
+                                 self.s.gold, _rgb("2E8B57")][i])
             if meta:
-                tb3, tf3, p3 = self._text(s, Inches(0.98), Inches(5.2), W * 0.5,
+                tb4, tf4, p4 = self._text(s, Inches(1.4), Inches(6.1), W - Inches(2.8),
+                                          Inches(0.5), size=13, align=PP_ALIGN.CENTER)
+                self._run(p4, meta, size=13, color=_rgb("7A8698"))
+
+        elif kind == "aims":
+            # 英语：白底 + 红色大标题 + 黄底 Learning aims 块 + 青色标签（真实课件封面取证）
+            self._rect(s, 0, 0, W, H, self.s.white)
+            ss.draw_deco(s, self.s)
+            self._rect(s, 0, 0, W, Inches(0.12), self.s.accent)
+            if index:
+                tb, tf, p = self._text(s, Inches(0.95), Inches(0.95), Inches(5.4),
+                                       Inches(0.55), size=16)
+                self._run(p, index, size=16, bold=True, color=self.s.accent)
+            tb, tf, p = self._text(s, Inches(0.95), Inches(1.6), W * 0.8, Inches(1.9),
+                                   size=tsize, line_spacing=1.2)
+            for i, line in enumerate(title.split("\v")):
+                if i:
+                    p.add_line_break()
+                self._run(p, line, size=tsize, bold=True, color=self.s.warn)
+            # 黄底 Learning aims 块（真实课件封面最显眼的元素）
+            self._rect(s, Inches(0.95), Inches(3.75), Inches(3.4), Inches(0.6),
+                       _rgb("FFE699"), shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.12)
+            tb0, tf0, p0 = self._text(s, Inches(0.95), Inches(3.78), Inches(3.4),
+                                      Inches(0.54), size=17, align=PP_ALIGN.CENTER,
+                                      anchor=MSO_ANCHOR.MIDDLE)
+            self._run(p0, "Learning aims:", size=17, bold=True, color=self.s.ink)
+            if subtitle:
+                # 学习目标条目：蓝色关键词式
+                tb2, tf2, p2 = self._text(s, Inches(1.15), Inches(4.6), W - Inches(2.6),
+                                          Inches(1.5), size=18, line_spacing=1.55)
+                for i, line in enumerate(subtitle.split("\v")):
+                    pp = self._p(tf2, first=(i == 0))
+                    _indent(pp, 0.42, -0.42)
+                    self._run(pp, f"{i + 1}. ", size=18, bold=True, color=self.s.main)
+                    self._run(pp, line, size=18, color=self.s.ink)
+            if meta:
+                tb3, tf3, p3 = self._text(s, Inches(1.15), Inches(6.15), W - Inches(2.6),
                                           Inches(0.5), size=13)
                 self._run(p3, meta, size=13, color=_rgb("7A8698"))
             if tag:
-                tw = Inches(0.2 * len(tag) + 0.5)
-                self._rect(s, W - tw - Inches(0.8), H - Inches(1.2), tw, Inches(0.44),
-                           self.s.main, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
-                tb4, tf4, p4 = self._text(s, W - tw - Inches(0.8), H - Inches(1.18), tw,
+                tw = Inches(0.22 * len(tag) + 0.5)
+                self._rect(s, W - tw - Inches(0.8), Inches(0.92), tw, Inches(0.46),
+                           self.s.accent, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+                tb4, tf4, p4 = self._text(s, W - tw - Inches(0.8), Inches(0.95), tw,
                                           Inches(0.4), size=13, align=PP_ALIGN.CENTER,
                                           anchor=MSO_ANCHOR.MIDDLE)
                 self._run(p4, tag, size=13, bold=True, color=self.s.white)
@@ -456,32 +583,46 @@ class Deck:
                                           align=PP_ALIGN.RIGHT)
                 self._run(p4, tag.upper(), size=14, bold=True, color=self.s.accent)
 
-        elif kind == "ruler":
+        elif kind == "orbit":
+            # 物理：深蓝渐变底 + 轨道弧线（真实课件封面取证：深蓝 + 白色椭圆轨道）
             self._rect(s, 0, 0, W, H, self.s.main)
-            self._rect(s, 0, 0, W, Inches(0.16), self.s.accent)
-            ss.draw_deco(s, self.s)
-            y = H - Inches(1.55)
-            for i in range(40):
-                h = Inches(0.3) if i % 5 == 0 else Inches(0.15)
-                t = self._rect(s, Inches(0.6) + (W - Inches(1.2)) / 40 * i, y - h,
-                               Emu(9525), h, _rgb("3A5375"))
-            self._rect(s, Inches(0.6), y, W - Inches(1.2), Emu(12700), _rgb("5C7BA6"))
+            self._rect(s, 0, 0, W, Inches(0.16), self.s.gold)
+            # 轨道弧线（右下大椭圆 + 小圆点）
+            ring = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(6.9), Inches(2.3),
+                                      Inches(6.2), Inches(5.15))
+            ring.fill.background()
+            ring.line.color.rgb = _rgb("3A5575")
+            ring.line.width = Pt(2.0)
+            ring.shadow.inherit = False
+            ring2 = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(7.9), Inches(3.35),
+                                       Inches(4.4), Inches(3.1))
+            ring2.fill.background()
+            ring2.line.color.rgb = _rgb("2E4A72")
+            ring2.line.width = Pt(1.25)
+            ring2.shadow.inherit = False
+            dot = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(10.75), Inches(3.05),
+                                     Inches(0.24), Inches(0.24))
+            dot.fill.solid()
+            dot.fill.fore_color.rgb = self.s.gold
+            dot.line.fill.background()
+            dot.shadow.inherit = False
             if index:
-                tb, tf, p = self._text(s, Inches(0.9), Inches(1.0), Inches(5), Inches(0.6),
+                tb, tf, p = self._text(s, Inches(0.9), Inches(1.05), Inches(5), Inches(0.6),
                                        size=16)
-                self._run(p, index, size=16, bold=True, color=self.s.accent)
-            tb, tf, p = self._text(s, Inches(0.9), Inches(1.95), W - Inches(2.2),
+                self._run(p, index, size=16, bold=True, color=self.s.gold)
+            tb, tf, p = self._text(s, Inches(0.9), Inches(1.95), W - Inches(5.2),
                                    Inches(2.1), size=tsize, line_spacing=1.2)
             for i, line in enumerate(title.split("\v")):
                 if i:
                     p.add_line_break()
                 self._run(p, line, size=tsize, bold=True, color=self.s.white)
+            self._rect(s, Inches(0.93), Inches(4.15), Inches(1.1), Emu(28575), self.s.gold)
             if subtitle:
-                tb2, tf2, p2 = self._text(s, Inches(0.95), Inches(4.05), W - Inches(2.2),
+                tb2, tf2, p2 = self._text(s, Inches(0.95), Inches(4.45), W - Inches(5.2),
                                           Inches(0.8), size=19)
                 self._run(p2, subtitle, size=19, color=_rgb("C7D3E4"))
             if meta:
-                tb3, tf3, p3 = self._text(s, Inches(0.95), Inches(4.8), W - Inches(2.2),
+                tb3, tf3, p3 = self._text(s, Inches(0.95), Inches(5.35), W - Inches(5.2),
                                           Inches(0.5), size=12)
                 self._run(p3, meta, size=12, color=_rgb("8FA2BC"))
             if tag:
@@ -493,69 +634,114 @@ class Deck:
                                           anchor=MSO_ANCHOR.MIDDLE)
                 self._run(p4, tag, size=13, bold=True, color=self.s.main)
 
-        elif kind == "molecule":
-            # 化学：浅青底 + 墨绿标题 + 橙色分子网络（与物理的深色满版区分开）
+        elif kind == "photo":
+            # 化学：浅灰白旋涡 + 深蓝粗标题（左）+ 圆角实验卡片（右）（真实课件封面取证）
             self._rect(s, 0, 0, W, H, self.s.light)
             ss.draw_deco(s, self.s)
-            self._rect(s, 0, 0, Inches(0.18), H, self.s.main)
-            self._rect(s, 0, H - Inches(0.16), W, Inches(0.16), self.s.accent)
+            self._rect(s, 0, 0, W, Inches(0.12), self.s.main)
+            # 右侧圆角卡片（模拟实物照片卡：青灰渐层 + 器皿线条示意）
+            cx, cy, cw, chh = W * 0.63, Inches(1.6), Inches(4.15), Inches(3.9)
+            self._rect(s, cx, cy, cw, chh, _rgb("DCE6EE"),
+                       shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.05)
+            self._rect(s, cx, cy + chh - Inches(0.55), cw, Inches(0.55),
+                       _rgb("C7D4E0"), shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.08)
+            # 试管示意（三根圆角竖条）
+            for i, col in enumerate([_rgb("7FB3D9"), _rgb("E8A87C"), _rgb("82C9A6")]):
+                tx = cx + Inches(0.95 + 1.05 * i)
+                tube = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, tx,
+                                          cy + Inches(0.9), Inches(0.52), Inches(2.2))
+                tube.fill.solid()
+                tube.fill.fore_color.rgb = col
+                tube.line.color.rgb = _rgb("9FB2C4")
+                tube.line.width = Pt(1.0)
+                tube.shadow.inherit = False
             if index:
-                tb, tf, p = self._text(s, Inches(0.9), Inches(1.05), Inches(5.4),
+                tb, tf, p = self._text(s, Inches(0.9), Inches(1.15), Inches(5.4),
                                        Inches(0.55), size=15)
-                self._run(p, index, size=15, bold=True, color=self.s.accent)
-            tb, tf, p = self._text(s, Inches(0.9), Inches(1.75), W * 0.62, Inches(2.4),
+                self._run(p, index, size=15, bold=True, color=self.s.warn)
+            tb, tf, p = self._text(s, Inches(0.9), Inches(1.8), W * 0.56, Inches(2.4),
                                    size=tsize, line_spacing=1.2)
             for i, line in enumerate(title.split("\v")):
                 if i:
                     p.add_line_break()
                 self._run(p, line, size=tsize, bold=True, color=self.s.main)
-            self._rect(s, Inches(0.93), Inches(3.9), Inches(1.2), Inches(0.09),
+            self._rect(s, Inches(0.93), Inches(3.95), Inches(1.2), Inches(0.09),
                        self.s.accent)
             if subtitle:
-                tb2, tf2, p2 = self._text(s, Inches(0.93), Inches(4.2), W * 0.6,
+                tb2, tf2, p2 = self._text(s, Inches(0.93), Inches(4.25), W * 0.55,
                                           Inches(0.8), size=19)
-                self._run(p2, subtitle, size=19, color=_rgb("2F4F49"))
+                self._run(p2, subtitle, size=19, color=_rgb("2F4F5C"))
             if meta:
-                tb3, tf3, p3 = self._text(s, Inches(0.93), Inches(5.15), W * 0.6,
+                tb3, tf3, p3 = self._text(s, Inches(0.93), Inches(5.2), W * 0.55,
                                           Inches(0.5), size=12)
-                self._run(p3, meta, size=12, color=_rgb("5E807A"))
+                self._run(p3, meta, size=12, color=_rgb("5E808C"))
             if tag:
                 tw = Inches(0.2 * len(tag) + 0.5)
-                self._rect(s, W - tw - Inches(0.8), H - Inches(1.25), tw, Inches(0.44),
+                self._rect(s, Inches(0.93), H - Inches(1.25), tw, Inches(0.44),
                            self.s.main, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
-                tb4, tf4, p4 = self._text(s, W - tw - Inches(0.8), H - Inches(1.23), tw,
+                tb4, tf4, p4 = self._text(s, Inches(0.93), H - Inches(1.23), tw,
                                           Inches(0.4), size=13, align=PP_ALIGN.CENTER,
                                           anchor=MSO_ANCHOR.MIDDLE)
                 self._run(p4, tag, size=13, bold=True, color=self.s.white)
 
-        else:  # cell
-            self._rect(s, 0, 0, W, H, self.s.light)
+        else:  # radial
+            # 生物：白底 + 绿色块标题 + 放射概念图（真实课件封面取证：绿块白字 + 彩色标签放射）
+            self._rect(s, 0, 0, W, H, self.s.white)
             ss.draw_deco(s, self.s)
             self._rect(s, 0, 0, W, Inches(0.14), self.s.main)
             self._rect(s, 0, H - Inches(0.14), W, Inches(0.14), self.s.accent)
+            # 右侧放射概念图：中心绿块 + 4 彩色小标签
+            hub_x, hub_y = W * 0.72, Inches(3.3)
+            self._rect(s, hub_x - Inches(0.85), hub_y - Inches(0.32), Inches(1.7),
+                       Inches(0.64), self.s.main, shape=MSO_SHAPE.ROUNDED_RECTANGLE,
+                       radius=0.18)
+            tbh, tfh, ph = self._text(s, hub_x - Inches(0.85), hub_y - Inches(0.3),
+                                      Inches(1.7), Inches(0.6), size=15,
+                                      align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+            self._run(ph, self.s.label, size=15, bold=True, color=self.s.white)
+            for i, (lb, col, ang) in enumerate([
+                    ("结构", self.s.accent, 210), ("功能", _rgb("5B9BD5"), 150),
+                    ("特点", _rgb("E8A87C"), 270), ("应用", _rgb("B57EDC"), 330)]):
+                rad = math.radians(ang)
+                lx = int(hub_x + Inches(2.35) * math.cos(rad) - Inches(0.55))
+                ly = int(hub_y + Inches(1.95) * math.sin(rad) - Inches(0.26))
+                self._rect(s, lx, ly, Inches(1.1), Inches(0.52), col,
+                           shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+                tbl_, tfl, pl = self._text(s, lx, ly + Inches(0.02), Inches(1.1),
+                                           Inches(0.48), size=12, align=PP_ALIGN.CENTER,
+                                           anchor=MSO_ANCHOR.MIDDLE)
+                self._run(pl, lb, size=12, bold=True, color=self.s.white)
+                # 连线
+                ln = s.shapes.add_connector(1, int(hub_x), int(hub_y),
+                                            int(lx + Inches(0.55)), int(ly + Inches(0.26)))
+                ln.line.color.rgb = _rgb("C9D6CC")
+                ln.line.width = Pt(1.0)
             if index:
                 tb, tf, p = self._text(s, Inches(0.95), Inches(1.0), Inches(6), Inches(0.6),
                                        size=15)
                 self._run(p, index, size=15, bold=True, color=self.s.accent)
-            tb, tf, p = self._text(s, Inches(0.95), Inches(1.8), W * 0.66, Inches(2.4),
+            tb, tf, p = self._text(s, Inches(0.95), Inches(1.8), W * 0.5, Inches(2.4),
                                    size=int(tsize * 0.94), line_spacing=1.2)
             for i, line in enumerate(title.split("\v")):
                 if i:
                     p.add_line_break()
                 self._run(p, line, size=int(tsize * 0.94), bold=True, color=self.s.main)
             if subtitle:
-                tb2, tf2, p2 = self._text(s, Inches(0.98), Inches(4.2), W * 0.6,
-                                          Inches(0.8), size=19)
-                self._run(p2, subtitle, size=19, color=_rgb("3F5C57"))
+                # 黄荧光条（真实生物课件的「必背」高亮）
+                self._rect(s, Inches(0.98), Inches(4.35), W * 0.48, Inches(0.62),
+                           _rgb("FFF2CC"))
+                tb2, tf2, p2 = self._text(s, Inches(1.12), Inches(4.38), W * 0.45,
+                                          Inches(0.56), size=17, anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p2, subtitle, size=17, bold=True, color=self.s.ink)
             if meta:
-                tb3, tf3, p3 = self._text(s, Inches(0.98), Inches(5.2), W * 0.6,
+                tb3, tf3, p3 = self._text(s, Inches(0.98), Inches(5.35), W * 0.48,
                                           Inches(0.5), size=12)
                 self._run(p3, meta, size=12, color=_rgb("6B8C85"))
             if tag:
                 tw = Inches(0.2 * len(tag) + 0.5)
-                self._rect(s, W - tw - Inches(0.8), H - Inches(1.2), tw, Inches(0.44),
+                self._rect(s, Inches(0.98), H - Inches(1.2), tw, Inches(0.44),
                            self.s.main, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
-                tb4, tf4, p4 = self._text(s, W - tw - Inches(0.8), H - Inches(1.18), tw,
+                tb4, tf4, p4 = self._text(s, Inches(0.98), H - Inches(1.18), tw,
                                           Inches(0.4), size=13, align=PP_ALIGN.CENTER,
                                           anchor=MSO_ANCHOR.MIDDLE)
                 self._run(p4, tag, size=13, bold=True, color=self.s.white)
@@ -563,26 +749,48 @@ class Deck:
 
     def divider(self, title: str, index: str = "", subtitle: str = "", spine: str = ""):
         s = self._blank()
-        self._rect(s, 0, 0, W, H, self.t.main)
-        self._rect(s, 0, H - Inches(0.16), W, Inches(0.16), self.t.accent)
-        if index:
-            tb, tf, p = self._text(s, Inches(0.85), Inches(1.3), Inches(4), Inches(1.7),
-                                   size=92)
-            self._run(p, index, size=92, bold=True, color=self.t.accent)
-        tb2, tf2, p2 = self._text(s, Inches(0.92), Inches(3.1), W - Inches(2.2), Inches(1.2),
-                                  size=40)
-        self._run(p2, title, size=40, bold=True, color=self.t.white)
-        if subtitle:
-            tb3, tf3, p3 = self._text(s, Inches(0.98), Inches(4.25), W - Inches(2.2),
-                                      Inches(0.8), size=18)
-            self._run(p3, subtitle, size=18, color=_rgb("CBD8F0"))
+        dark = self.s.key in ("physics", "chemistry")   # 真实课件：物理/化学有深蓝章节页
+        if dark:
+            self._rect(s, 0, 0, W, H, self.t.main)
+            self._rect(s, 0, H - Inches(0.16), W, Inches(0.16), self.t.accent)
+            if index:
+                tb, tf, p = self._text(s, Inches(0.85), Inches(1.3), Inches(4), Inches(1.7),
+                                       size=92)
+                self._run(p, index, size=92, bold=True, color=self.t.accent)
+            tb2, tf2, p2 = self._text(s, Inches(0.92), Inches(3.1), W - Inches(2.2), Inches(1.2),
+                                      size=40)
+            self._run(p2, title, size=40, bold=True, color=self.t.white)
+            if subtitle:
+                tb3, tf3, p3 = self._text(s, Inches(0.98), Inches(4.25), W - Inches(2.2),
+                                          Inches(0.8), size=18)
+                self._run(p3, subtitle, size=18, color=_rgb("CBD8F0"))
+        else:
+            # 白底章节页（语数英生物真实课件没有满版深色过渡页）
+            self._rect(s, 0, 0, W, H, self.t.white)
+            self._rect(s, 0, 0, W, Inches(0.12), self.t.main)
+            self._rect(s, 0, H - Inches(0.12), W, Inches(0.12), self.t.accent)
+            self._rect(s, Inches(0.85), Inches(2.55), Inches(0.14), Inches(1.5),
+                       self.t.accent)
+            if index:
+                tb, tf, p = self._text(s, Inches(1.25), Inches(1.35), Inches(4), Inches(1.6),
+                                       size=88)
+                self._run(p, index, size=88, bold=True, color=self.t.light)
+            tb2, tf2, p2 = self._text(s, Inches(1.25), Inches(2.6), W - Inches(2.5),
+                                      Inches(1.1), size=40)
+            self._run(p2, title, size=40, bold=True, color=self.t.main)
+            if subtitle:
+                tb3, tf3, p3 = self._text(s, Inches(1.32), Inches(3.85), W - Inches(2.5),
+                                          Inches(0.8), size=18)
+                self._run(p3, subtitle, size=18, color=_rgb("5A657A"))
         if spine:
-            self._rect(s, W - Inches(0.55), Inches(2.2), Inches(0.4), Inches(2.6),
-                       self.t.accent, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.2)
-            tb4, tf4, p4 = self._text(s, W - Inches(0.55), Inches(2.3), Inches(0.4),
-                                      Inches(2.4), size=15, align=PP_ALIGN.CENTER,
-                                      anchor=MSO_ANCHOR.MIDDLE, vertical=True)
-            self._run(p4, spine, size=15, bold=True, color=self.t.white)
+            # 竖排标签放不稳（LibreOffice 裁字），改成小竖条 + 横排小标签
+            bar_col = self.t.gold if dark else self.t.accent
+            self._rect(s, Inches(0.85), Inches(2.2), Inches(0.42), Inches(0.95),
+                       bar_col, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.2)
+            tb4, tf4, p4 = self._text(s, Inches(1.4), Inches(2.2), Inches(2.2),
+                                      Inches(0.42), size=15)
+            self._run(p4, spine, size=15, bold=True,
+                      color=self.t.white if dark else self.t.accent)
         return s
 
     def bullets(self, title: str, items: list[str], *, kicker: str = "", lead: str = "",
@@ -719,7 +927,8 @@ class Deck:
 
         if index:
             bw = Inches(0.34 * len(index) + 0.5)
-            self._rect(s, left, top, bw, Inches(0.44), self.t.accent,
+            # 真实课件：红「例N」圆角标签（六科通吃）
+            self._rect(s, left, top, bw, Inches(0.44), self.t.warn,
                        shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.25)
             tb, tf, p = self._text(s, left, top + Inches(0.02), bw, Inches(0.4), size=15,
                                    align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
@@ -748,31 +957,44 @@ class Deck:
 
         if note:
             nx = W - Inches(0.6) - note_w
-            hgt = H - top - Inches(0.7)
+            sents = _sentences(note)
+            hgt = min(H - top - Inches(0.7),
+                      Inches(0.78 + 0.34 * min(len(sents), 6)))
             self._rect(s, nx, top - Inches(0.12), note_w, hgt, _rgb("FDFBF7"),
                        line=_rgb("E5C9A8"), shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.05)
             self._rect(s, nx, top - Inches(0.12), Inches(0.07), hgt, self.t.warn)
             tb2, tf2, p2 = self._text(s, nx + Inches(0.2), top, note_w - Inches(0.36),
-                                      hgt - Inches(0.2), size=14, line_spacing=1.45)
-            self._run(p2, "判定要点", size=14, bold=True, color=self.t.warn)
+                                      hgt - Inches(0.2), size=13, line_spacing=1.32)
+            self._run(p2, "判定要点", size=13, bold=True, color=self.t.warn)
             for i, line in enumerate(_sentences(note)):
-                pp = self._p(tf2, space_before=6)
+                pp = self._p(tf2, space_before=4)
                 _indent(pp, 0.32, -0.32)
-                self._run(pp, f"{i + 1}. ", size=13, bold=True, color=self.t.warn)
-                self._rich(pp, line, size=13, color=_rgb("6B2B2B"))
+                self._run(pp, f"{i + 1}. ", size=12, bold=True, color=self.t.warn)
+                self._rich(pp, line, size=12, color=_rgb("6B2B2B"))
         self._chrome(s)
         return s
 
     def _option_grid(self, slide, options: list[str], left, top, width):
-        """4 选项：够短就 4 列，否则 2×2；每格悬挂缩进，字母加粗着色。"""
+        """4 选项：够短就 4 列，否则 2×2，长选项竖排单列；每格悬挂缩进，字母加粗着色。"""
         def cw(t):
             return sum(1.0 if ord(c) > 127 else 0.55 for c in t)
 
         n = len(options)
-        per = 4 if (n == 4 and sum(cw(o) for o in options) <= 46) else 2
+        body_ws = [cw(re.sub(r"^\s*[A-DＡ-Ｄ]\s*[.．、]\s*", "", o).strip()) for o in options]
+        maxw = max(body_ws) if body_ws else 0
+        # 按可用格宽反推列数：文本宽 + 悬挂缩进必须放得下，否则减列
+        per = 1
+        for cand, sz in ((4, 19), (2, 18), (1, 17)):
+            if n < cand:
+                continue
+            cell_w = width / cand - Inches(0.12)
+            needed = Inches(maxw * sz / 72.0 * 1.02 + 0.42)
+            if needed <= cell_w:
+                per = cand
+                break
         rows = [options[i:i + per] for i in range(0, n, per)]
-        size = 19 if per == 4 else 18
-        cell_h = Inches(0.6)
+        size = 19 if per == 4 else (18 if per == 2 else 17)
+        cell_h = Inches(0.6 if per >= 2 else 0.52)
         for ri, row in enumerate(rows):
             for ci, opt in enumerate(row):
                 x = left + (width / per) * ci
@@ -793,7 +1015,8 @@ class Deck:
         y = Inches(1.2)
         if index:
             bw = Inches(0.34 * len(index) + 0.5)
-            self._rect(s, Inches(0.6), y, bw, Inches(0.42), _rgb("15803D"),
+            # 真实课件：解析页左上是蓝色「解析」竖标/蓝标签
+            self._rect(s, Inches(0.6), y, bw, Inches(0.42), self.t.accent,
                        shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.25)
             tb, tf, p = self._text(s, Inches(0.6), y + Inches(0.02), bw, Inches(0.38),
                                    size=14, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
@@ -802,11 +1025,12 @@ class Deck:
         if answer:
             asize = 22 if len(answer) <= 36 else (19 if len(answer) <= 90 else 16)
             ah = Inches(0.62 if len(answer) <= 36 else (1.05 if len(answer) <= 90 else 1.6))
-            self._rect(s, Inches(0.6), y, Inches(0.07), ah, _rgb("16A34A"))
+            # 真实课件：红=答案（六科通吃）
+            self._rect(s, Inches(0.6), y, Inches(0.07), ah, self.t.warn)
             tb, tf, p = self._text(s, Inches(0.8), y, W - Inches(1.4), ah, size=asize,
                                    line_spacing=1.35)
-            self._run(p, "答案：", size=asize, bold=True, color=_rgb("15803D"))
-            self._rich(p, answer, size=asize, color=_rgb("15803D"))
+            self._run(p, "答案：", size=asize, bold=True, color=self.t.warn)
+            self._rich(p, answer, size=asize, color=self.t.warn)
             y += ah + Inches(0.18)
         if analysis:
             analysis = re.sub(r"^(解析|详解|分析)\s*[:：]\s*", "", analysis.strip())
@@ -1055,24 +1279,31 @@ class Deck:
         self._rect(s, 0, 0, W, H, self.t.light)
         self._rect(s, 0, 0, W, Inches(0.12), self.t.main)
         self._rect(s, 0, H - Inches(0.12), W, Inches(0.12), self.t.accent)
-        tb, tf, p = self._text(s, Inches(0.85), Inches(0.8), W - Inches(1.7), Inches(0.9),
+        tb, tf, p = self._text(s, Inches(0.85), Inches(1.1), W - Inches(1.7), Inches(0.9),
                                size=38)
         self._run(p, title, size=38, bold=True, color=self.t.main)
         if items:
             size, sp = _fit(items, base=23)
-            tb2, tf2, p2 = self._text(s, Inches(0.95), Inches(1.95), W - Inches(1.9),
-                                      H - Inches(2.85), size=size, line_spacing=1.45)
+            # 垂直居中排要点，避免页面下半空置
+            n = len(items)
+            block_h = Inches(0.52 * n + 0.1 * max(0, n - 1))
+            top = max(Inches(2.3), (H - block_h) / 2 + Inches(0.25))
+            tb2, tf2, p2 = self._text(s, Inches(0.95), top, W - Inches(1.9),
+                                      H - top - Inches(1.1), size=size, line_spacing=1.45)
             for i, it in enumerate(items):
                 pp = self._p(tf2, first=(i == 0), space_before=0 if i == 0 else sp)
                 _indent(pp, 0.45, -0.45)
                 self._run(pp, "✔ ", size=size, color=self.t.accent)
                 self._rich(pp, it, size=size)
-        tb3, tf3, p3 = self._text(s, Inches(0.95), H - Inches(0.95), W - Inches(1.9),
-                                  Inches(0.38), size=14)
-        self._run(p3, self.school or "", size=14, color=_rgb("64748B"))
-        tb4, tf4, p4 = self._text(s, W - Inches(1.25), H - Inches(0.95), Inches(0.75),
-                                  Inches(0.38), size=14, align=PP_ALIGN.RIGHT)
-        self._run(p4, str(self.n), size=14, color=_rgb("64748B"))
+        if self.s.key in ("physics", "chemistry"):
+            self._chrome(s)      # 页码方块 + 页脚（含学校），不再单排一行
+        else:
+            tb3, tf3, p3 = self._text(s, Inches(0.95), H - Inches(0.95), W - Inches(1.9),
+                                      Inches(0.38), size=14)
+            self._run(p3, self.school or "", size=14, color=_rgb("64748B"))
+            tb4, tf4, p4 = self._text(s, W - Inches(1.25), H - Inches(0.95), Inches(0.75),
+                                      Inches(0.38), size=14, align=PP_ALIGN.RIGHT)
+            self._run(p4, str(self.n), size=14, color=_rgb("64748B"))
         return s
 
     def save(self, path: str | Path) -> Path:
