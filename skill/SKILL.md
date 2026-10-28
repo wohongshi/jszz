@@ -65,8 +65,12 @@ apt install nodejs
 ### A. 从学科网取材 → 出学案/试卷
 
 1. `zxxk_search(keyword, resource_type="学案")` 找候选，拿 `document_id`
-2. `zxxk_preview_text(document_id, max_pages=6)` 读预览页正文（免登录，预览页是
-   SVG，文字可直接提取；公式/图形是位图，会缺）
+2. `zxxk_preview_files(document_id)` 看**版本清单**（原卷版 / 解析版）与页数：
+   `PreviewPage` 是免费能看的（2–5 页），`TotalPage` 才是全本
+3. `zxxk_preview_text(document_id, version=0)` 读该版本全部可预览页正文
+   （免登录；公式/图形是位图，读不到，但可以 `zxxk_preview_images` 导出）
+4. 想要**能改的卷子**：`zxxk_preview_docx(document_id, version=0)` 直接还原成 docx
+   （文字可编辑 + 公式图形位图），比手抄快得多
 3. 把读到的内容整理成 Markdown（语法见 `references/04-markdown.md`）
 4. `make_xuean(markdown, pptx=True)` 或 `make_paper_md(markdown)`
 5. 返回的 `files.docx` / `files.pptx` 就是成品路径，直接给老师
@@ -159,7 +163,9 @@ jszz check --md a.md --docx a.docx --pptx a.pptx   # 命令行同一套
 2. **六科模板不同**：语文一文一案、数学一考点一案、英语一话题四件套、
    物理/化学一讲一案、生物章末填空案。写之前先看 `references/07-六科学案模板.md`，
    别拿物理的骨架去写语文。
-3. **组卷网常被墙**：`zujuan.xkw.com` 有 acw_sc__v2 + 登录双重限制，机房 IP 常被
+3. **预览 JSON 只成功一次**：连续请求会撞阿里云滑块验证，jszz 会缓存首次结果；
+   缓存过期（7 天）后才会重新请求。别自己写循环重试，越试越封。
+4. **组卷网常被墙**：`zujuan.xkw.com` 有 acw_sc__v2 + 登录双重限制，机房 IP 常被
    拦截（返回 23670 字节的挑战页）。失败就换「搜索 → 预览页取题」这条路，别硬刚。
 3. **WAF 需要 node**：zxxk 的挑战页要靠 node 跑页面自己的 JS（`bin/fetch_alicfw.js`），
    没装 node 会一直返回挑战页。

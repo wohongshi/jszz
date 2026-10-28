@@ -27,7 +27,7 @@ Cherry Studio …）都能调。
 | # | 能力 | 工具 |
 |---|---|---|
 | 1 | B站搜索 / 详情 / 字幕 / 音视频下载 | `bili_search` `bili_video_info` `bili_subtitle` `bili_download` `bili_audio_stream` |
-| 2 | 学科网搜索 / 资料详情 / 预览页正文 / 组卷网搜题 | `zxxk_search` `zxxk_document` `zxxk_preview_text` `zxxk_questions` `zxxk_knowledge_questions` |
+| 2 | 学科网搜索 / 版本清单 / 预览正文 / **还原 docx** / 抠图 / 组卷网搜题 | `zxxk_search` `zxxk_document` `zxxk_preview_files` `zxxk_preview_text` `zxxk_preview_docx` `zxxk_preview_images` `zxxk_questions` `zxxk_knowledge_questions` |
 | 3 | 学案编写（docx） | `make_xuean` |
 | 4 | 学案自动生成 PPT | `make_xuean(pptx=True)` |
 | 5 | 试卷编写 / 组卷（docx，带答案页） | `make_paper_md` `assemble_paper` |
@@ -101,6 +101,15 @@ jszz paper examples/paper-wuli.md        # → ~/.jszz/out/paper/*.docx / *.pptx
 ```
 
 ## 设计要点
+
+**学科网预览 JSON = 版本清单。** 未文档化接口 `FirstLoadPreviewJson` 一次给出
+「原卷版 / 解析版」各自的**预览页数**与**全本页数**（例：2/5 页、3/23 页），
+据此判断值不值 下载。免费预览只给前 3–5 页，全本要账号点数。
+
+**预览页可以还原成可编辑 docx。** 预览页是 SVG：文字带坐标、公式与几何图是内嵌 base64 位图。
+`zxxk_preview_docx` 按坐标把文字重排成行、把位图插回原位置，得到一份能改的卷子
+（实测一份数学卷：1 065 字 + 45 张内嵌图）。坑有三个：`x` 是逐字形坐标列表、
+`font-size` 挂在父级 `<g>`、还有一层 y=0 的隐藏文本层要剔除。
 
 **学科网预览页 = 免费题库。** 资料详情页的预览页是矢量 SVG，文字节点可直接提取，
 不用登录、不消耗点数。`zxxk_preview_text` 把 SVG 按坐标还原成阅读顺序的纯文本，

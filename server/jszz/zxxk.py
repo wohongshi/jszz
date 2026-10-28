@@ -20,7 +20,11 @@ import urllib.parse
 from pathlib import Path
 from typing import Any
 
+from . import config
+from .svg2docx import svg_text
 from .waf import WafSession
+
+CAPTCHA_MARKERS = ("aliyunCaptcha", "aliyun_waf_bb", "nc-container")
 
 SEARCH_API = "https://search.zxxk.com/api-kernel/v1/search-site/document/list"
 DOC_URL = "https://www.zxxk.com/soft/{doc_id}.html"
@@ -132,25 +136,175 @@ class ZxxkClient:
         out["need_login"] = "您好，这份资料暂时无法预览" not in text and not previews
         return out
 
+    # ---------------- preview (JSON, 全部分版本/全部页) ----------------
+    def _cache_path(self, doc_id, kind: str = "preview"):
+        d = config.HOME / "cache" / "zxxk"
+        d.mkdir(parents=True, exist_ok=True)
+        return d / f"{kind}_{doc_id}.json"
+
+    def preview_files(self, doc_id: int | str, *, use_cache: bool = True) -> dict:
+        """未文档化接口：拿到资料的**版本清单**与每个版本可预览的页。
+
+        返回 files[]: {name, pages:[url...], preview_pages, total_pages}
+        价值在于：① 区分原卷版/解析版（详情页 HTML 混在一起）；
+        ② 给出 TotalPage（整份资料真实页数），老师据此判断值不值得下载；
+        ③ 页面 URL 直接可用，不用再解析详情页。
+        注意：免费预览**只给前 3–5 页**（PreviewPage），TotalPage 才是全本。
+        """
+        cache = self._cache_path(doc_id)
+        if use_cache and cache.exists():
+            try:
+                import json as _json
+                import time as _time
+                blob = _json.loads(cache.read_text("utf-8"))
+                if _time.time() - blob.get("ts", 0) < 7 * 86400:
+                    return blob["result"]
+            except Exception:
+                pass
+
+        url = (f"https://www.zxxk.com/soft/Preview/FirstLoadPreviewJson"
+               f"?softID={doc_id}&type=3&product=1&v=2&FullPreview=true")
+        r = self.http.get(url, headers={"Referer": f"https://www.zxxk.com/soft/{doc_id}.html"})
+        body = r.content.decode("utf-8", "replace")
+        if any(m in body[:4000] for m in CAPTCHA_MARKERS):
+            # 阿里云滑块验证：脚本解不了，别硬刷（越刷越封）
+            return {"ok": False, "status": 200,
+                    "reason": "学科网触发了滑块验证（请求过密）。"
+                              "稍后重试，或先在浏览器里打开一次学科网，再在 WebUI 导入 cookie。"}
+        try:
+            import json as _json
+            data = (_json.loads(body) or {}).get("data") or {}
+        except Exception:
+            return {"ok": False, "reason": "预览接口返回非 JSON", "status": r.status_code,
+                    "head": body[:120]}
+        if not data.get("IsSuccess"):
+            return {"ok": False, "reason": "预览接口未成功（可能需要登录/点数）"}
+
+        def page_urls(html: str) -> list[str]:
+            out = []
+            for raw in re.findall(r'data-original="([^"]+)"', html or ""):
+                u = htmllib.unescape(raw).replace("&amp;", "&")
+                if u not in out:
+                    out.append(u)
+            return out
+
+        files = []
+        if data.get("IsRar") and data.get("rarPreviewInfo"):
+            for f in data["rarPreviewInfo"]:
+                urls = page_urls(f.get("Html") or "")
+                files.append({"name": f.get("SoftName") or "", "pages": urls,
+                              "preview_pages": f.get("PreviewPage") or len(urls),
+                              "total_pages": f.get("TotalPage") or len(urls)})
+        else:
+            urls = page_urls(data.get("Html") or "")
+            files.append({"name": data.get("SoftName") or "", "pages": urls,
+                          "preview_pages": data.get("PreviewPage") or len(urls),
+                          "total_pages": data.get("TotalPage") or len(urls)})
+        files = [f for f in files if f["pages"]]
+        result = {"ok": bool(files), "document_id": int(doc_id), "files": files,
+                  "reason": "" if files else "该资料无可读预览页（可能为扫描件或需登录）"}
+        if files:
+            try:
+                import json as _json
+                import time as _time
+                cache.write_text(_json.dumps({"ts": _time.time(), "result": result},
+                                             ensure_ascii=False), "utf-8")
+            except Exception:
+                pass
+        return result
+
     # ---------------- preview text ----------------
-    def preview_text(self, doc_id: int | str, max_pages: int = 6) -> dict:
-        """Extract text from the free preview pages (SVG <text> order == reading order)."""
-        d = self.detail(doc_id)
-        urls = d.get("preview_urls") or []
-        if not urls:
-            return {"ok": False, "reason": "该资料没有可读预览页（需登录/下载）",
-                    "detail": d}
+    def preview_text(self, doc_id: int | str, max_pages: int = 6,
+                     version: int = 0) -> dict:
+        """读预览页正文。
+
+        version: 0 起，对应 preview_files() 里的 files 顺序（如 0=原卷版, 1=解析版）。
+        max_pages: 0 或负数 = 该版本**全部可预览页**（免费只有前 3–5 页，不是全本）。
+        """
+        meta = self.preview_files(doc_id)
+        if not meta.get("ok"):
+            # 退化：详情页里能捞到几页算几页
+            d = self.detail(doc_id)
+            urls = d.get("preview_urls") or []
+            if not urls:
+                return {"ok": False, "reason": meta.get("reason") or "无可读预览页",
+                        "detail": d}
+            meta = {"files": [{"name": d.get("title") or "", "pages": urls,
+                               "total_pages": len(urls)}]}
+
+        files = meta["files"]
+        idx = version if 0 <= version < len(files) else 0
+        chosen = files[idx]
+        urls = chosen["pages"]
+        limit = len(urls) if max_pages <= 0 else min(max_pages, len(urls))
         pages = []
-        for i, u in enumerate(urls[:max_pages], 1):
+        for i, u in enumerate(urls[:limit], 1):
             r = self.http.s.get(u, timeout=self.http.timeout)
             if r.status_code != 200:
-                pages.append({"page": i, "text": "", "error": f"HTTP {r.status_code}"})
+                pages.append({"page": i, "url": u, "text": "", "error": f"HTTP {r.status_code}"})
                 continue
-            pages.append({"page": i, "text": svg_text(r.text)})
+            pages.append({"page": i, "url": u, "text": svg_text(r.text)})
+        d = self.detail(doc_id)
         return {"ok": True, "document_id": int(doc_id), "title": d.get("title"),
-                "pages": pages, "preview_total": d.get("preview_pages"),
+                "version": idx, "version_name": chosen["name"],
+                "versions": [{"index": k, "name": f["name"],
+                              "preview_pages": f.get("preview_pages"),
+                              "total_pages": f["total_pages"]} for k, f in enumerate(files)],
+                "pages": pages, "preview_total": chosen["total_pages"],
                 "detail": {k: d.get(k) for k in
                            ("title", "type", "subject", "grade", "author", "publish", "size")}}
+
+    def preview_docx(self, doc_id: int | str, out_path: str | Path, *, version: int = 0,
+                     max_pages: int = 0, title: str = "", school: str = "") -> dict:
+        """把预览页还原成**可编辑 docx**（文字 + 公式/图形的位图）。
+
+        只覆盖免费预览的那几页（3–5 页）；全本要下载原件。
+        """
+        from .svg2docx import build_docx, parse_svg
+
+        meta = self.preview_files(doc_id)
+        if not meta.get("ok"):
+            return {"ok": False, "reason": meta.get("reason") or "无可读预览页"}
+        files = meta["files"]
+        idx = version if 0 <= version < len(files) else 0
+        chosen = files[idx]
+        urls = chosen["pages"]
+        limit = len(urls) if max_pages <= 0 else min(max_pages, len(urls))
+        pages = []
+        for u in urls[:limit]:
+            r = self.http.s.get(u, timeout=self.http.timeout)
+            if r.status_code == 200:
+                pages.append(parse_svg(r.text))
+        if not pages:
+            return {"ok": False, "reason": "预览页全部下载失败"}
+        d = self.detail(doc_id)
+        name = title or (d.get("title") or f"zxxk-{doc_id}")
+        footer = "　".join(x for x in [school, name] if x)[:60]
+        path = build_docx(pages, out_path, title="", footer=footer)
+        return {"ok": True, "file": str(path), "pages": len(pages),
+                "chars": sum(len(ln["text"]) for p in pages for ln in p.lines()),
+                "images": sum(len(p.pics) for p in pages),
+                "version_name": chosen["name"], "title": name}
+
+    def preview_images(self, doc_id: int | str, out_dir: str | Path, *,
+                       version: int = 0, max_pages: int = 0) -> dict:
+        """导出预览页里的公式/图形位图（做 PPT 素材）。"""
+        from .svg2docx import parse_svg, save_images
+
+        meta = self.preview_files(doc_id)
+        if not meta.get("ok"):
+            return {"ok": False, "reason": meta.get("reason") or "无可读预览页"}
+        files = meta["files"]
+        idx = version if 0 <= version < len(files) else 0
+        urls = files[idx]["pages"]
+        limit = len(urls) if max_pages <= 0 else min(max_pages, len(urls))
+        pages = []
+        for u in urls[:limit]:
+            r = self.http.s.get(u, timeout=self.http.timeout)
+            if r.status_code == 200:
+                pages.append(parse_svg(r.text))
+        saved = save_images(pages, out_dir, prefix=f"{doc_id}")
+        return {"ok": True, "count": len(saved), "files": saved[:40], "dir": str(out_dir)}
 
     # ---------------- zujuan (组卷网) ----------------
     def zujuan_questions(self, knowledge_id: str, subject_prefix: str = "gzsx",
@@ -190,7 +344,7 @@ class ZxxkClient:
         return {"ok": True, "url": url, "items": items}
 
 
-def svg_text(svg: str) -> str:
+def svg_text_legacy(svg: str) -> str:
     """Rebuild text from an SVG preview page, keeping line order.
 
     The preview SVG positions every text run absolutely, so we group runs by their

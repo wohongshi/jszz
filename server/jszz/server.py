@@ -137,15 +137,16 @@ def zxxk_document(document_id: int) -> dict:
 
 
 @mcp.tool()
-def zxxk_preview_text(document_id: int, max_pages: int = 6,
+def zxxk_preview_text(document_id: int, max_pages: int = 0, version: int = 0,
                       save: bool = True) -> dict:
     """读学科网资料的免费预览页正文（预览页是 SVG，文字可直接提取，无需登录/点数）。
 
-    返回 pages[]：{page, text}；同时把全文存到 out/zxxk/ 下。
-    适合：把一份试卷/学案的前几页变成可编辑文字，再走 make_paper / make_xuean。
+    version: 0=原卷版、1=解析版…（先调 zxxk_preview_files 看版本清单）
+    max_pages: 0=该版本**全部可预览页**（免费只给前 3–5 页，不是全本）
+    返回 pages[]：{page, text}，以及 versions[]（各版本预览页数 / 全本页数）。
     """
     c = _zxxk()
-    r = c.preview_text(document_id, max_pages=max_pages)
+    r = c.preview_text(document_id, max_pages=max_pages, version=version)
     if r.get("ok") and save:
         p = _out("zxxk") / f"{document_id}_preview.txt"
         body = "\n\n".join(f"===== 第{p['page']}页 =====\n{p['text']}" for p in r["pages"])
@@ -153,6 +154,47 @@ def zxxk_preview_text(document_id: int, max_pages: int = 6,
         r["file"] = str(p)
         r["chars"] = len(body)
     return r
+
+
+@mcp.tool()
+def zxxk_preview_files(document_id: int) -> dict:
+    """列出一份学科网资料的可预览**版本清单**（原卷版 / 解析版）。
+
+    返回 files[]: {name, preview_pages, total_pages, pages[]}。
+    total_pages 是整份资料真实页数，免费预览只给前 3–5 页 —— 据此判断值不值得下载原件。
+    """
+    return _zxxk().preview_files(document_id)
+
+
+@mcp.tool()
+def zxxk_preview_docx(document_id: int, version: int = 0, max_pages: int = 0,
+                      name: str = "") -> dict:
+    """把学科网预览页**还原成可编辑 docx**（文字可编辑 + 公式/图形是位图）。
+
+    这是「拿到一份能改的卷子」的最快路径：不用登录、不花点数。
+    version: 0=原卷版 / 1=解析版（见 zxxk_preview_files）
+    只覆盖免费预览的那几页（3–5 页）。
+    """
+    c = _zxxk()
+    base = _slug(name or f"zxxk_{document_id}")
+    out = _out("zxxk") / f"{base}_v{version}.docx"
+    r = c.preview_docx(document_id, out, version=version, max_pages=max_pages,
+                       school=config.load().get("school", ""))
+    if r.get("ok"):
+        r["file"] = str(out)
+    return r
+
+
+@mcp.tool()
+def zxxk_preview_images(document_id: int, version: int = 0,
+                        max_pages: int = 0) -> dict:
+    """导出预览页里的**公式/几何图位图**（做 PPT 素材、拼卷子用）。
+
+    返回保存目录与前 40 个文件名；图片按「页_序号」命名。
+    """
+    c = _zxxk()
+    d = _out("zxxk") / f"imgs_{document_id}_v{version}"
+    return c.preview_images(document_id, d, version=version, max_pages=max_pages)
 
 
 @mcp.tool()
