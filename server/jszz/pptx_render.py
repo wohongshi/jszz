@@ -20,6 +20,7 @@ from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Emu, Inches, Pt
 
+from . import subject_style as ss
 from .mdparse import Block, Doc, Section, parse
 
 W, H = Inches(13.333), Inches(7.5)
@@ -83,10 +84,14 @@ class DeckTheme:
 
 
 class Deck:
-    def __init__(self, theme: str = "blue", footer: str = "", school: str = ""):
+    """六科各一套视觉语言：传 subject=学科名 自动选型，theme= 显式指定主题名覆盖。"""
+
+    def __init__(self, theme: str = "", footer: str = "", school: str = "",
+                 subject: str = ""):
         self.prs = Presentation()
         self.prs.slide_width, self.prs.slide_height = W, H
-        self.t = DeckTheme(theme if theme in THEMES else "blue")
+        self.s = ss.get(theme or subject)
+        self.t = self.s              # 兼容旧调用（.main/.accent/... 都是 RGBColor）
         self.footer = footer
         self.school = school
         self.n = 0
@@ -135,9 +140,9 @@ class Deck:
             bodyPr.set("vert", "eaVert")
         return tb, tf, p
 
-    @staticmethod
-    def _run(p, text, *, size, bold=False, color=None, cn=FONT_CN, en=FONT_EN,
+    def _run(self, p, text, *, size, bold=False, color=None, cn=None, en=FONT_EN,
              underline=False):
+        cn = ss.pick_font(cn or self.s.font_cn)
         r = p.add_run()
         r.text = text
         r.font.size = Pt(size)
@@ -212,14 +217,82 @@ class Deck:
                   color=self.t.white if dark else self.t.accent)
 
     def _header(self, slide, title: str, *, kicker: str = ""):
-        """栏目式页头：顶部细线 + 左侧竖条 + 标题（主题 · 子主题）+ 右上 chip。"""
-        self._rect(slide, 0, 0, W, Inches(0.1), self.t.main)
-        self._rect(slide, Inches(0.58), Inches(0.48), Inches(0.12), Inches(0.58),
-                   self.t.accent)
+        """五种页头：tick 细线+竖标 / bar 深色通栏 / bracket 宋体书名号 / band 青绿横幅 / ribbon 双色条。"""
+        kind = self.s.header
         size = 28 if len(title) <= 18 else (24 if len(title) <= 26 else 21)
-        tb, tf, p = self._text(slide, Inches(0.82), Inches(0.42), W - Inches(2.7),
-                               Inches(0.7), size=size, anchor=MSO_ANCHOR.MIDDLE)
-        self._rich(p, title, size=size, color=self.t.main, bold=True)
+        ss.draw_deco(slide, self.s)
+
+        if kind == "bar":
+            self._rect(slide, 0, 0, W, Inches(0.86), self.s.main)
+            self._rect(slide, 0, Inches(0.86), W, Inches(0.04), self.s.accent)
+            tb, tf, p = self._text(slide, Inches(0.6), Inches(0.14), W - Inches(4.1),
+                                   Inches(0.58), size=size, anchor=MSO_ANCHOR.MIDDLE)
+            self._rich(p, title, size=size, color=self.s.white, bold=True)
+            if kicker and kicker.strip() != title.strip():
+                self._chip(slide, kicker, y=Inches(0.22), dark=True)
+            return
+
+        if kind == "bracket":
+            # 语文：宋体标题 + 上下细墨线 + 左侧朱砂短竖
+            self._rect(slide, 0, Inches(0.40), W, Emu(12700), _rgb("BCA98C"))
+            self._rect(slide, 0, Inches(1.24), W, Emu(12700), _rgb("BCA98C"))
+            self._rect(slide, Inches(0.62), Inches(0.58), Inches(0.06), Inches(0.48),
+                       self.s.accent)
+            tb, tf, p = self._text(slide, Inches(0.85), Inches(0.55), W - Inches(2.8),
+                                   Inches(0.55), size=size, anchor=MSO_ANCHOR.MIDDLE)
+            for i, line in enumerate(_soft_wrap(title, 22).split("\v")):
+                if i:
+                    p.add_line_break()
+                self._run(p, line, size=size, bold=True, color=self.s.main,
+                          cn=self.s.font_head)
+            if kicker and kicker.strip() != title.strip():
+                tb2, tf2, p2 = self._text(slide, W - Inches(3.6), Inches(0.62),
+                                          Inches(3.0), Inches(0.4), size=13,
+                                          align=PP_ALIGN.RIGHT)
+                self._run(p2, f"—— {kicker}", size=13, color=self.s.accent,
+                          cn=self.s.font_head)
+            return
+
+        if kind == "band":
+            # 生物：青绿横幅 + 四栏栏目感
+            self._rect(slide, 0, 0, W, Inches(0.78), self.s.main)
+            self._rect(slide, 0, Inches(0.78), W, Inches(0.05), self.s.accent)
+            tb, tf, p = self._text(slide, Inches(0.6), Inches(0.12), W - Inches(3.6),
+                                   Inches(0.54), size=size, anchor=MSO_ANCHOR.MIDDLE)
+            self._run(p, title, size=size, bold=True, color=self.s.white)
+            if kicker and kicker.strip() != title.strip():
+                kw = Inches(0.17 * len(kicker) + 0.4)
+                self._rect(slide, W - kw - Inches(0.55), Inches(0.19), kw, Inches(0.4),
+                           self.s.accent, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+                tb2, tf2, p2 = self._text(slide, W - kw - Inches(0.55), Inches(0.21), kw,
+                                          Inches(0.36), size=11, align=PP_ALIGN.CENTER,
+                                          anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p2, kicker, size=11, bold=True, color=self.s.white)
+            return
+
+        if kind == "ribbon":
+            # 英语：左深右粉双色条
+            self._rect(slide, 0, 0, W * 0.62, Inches(0.1), self.s.main)
+            self._rect(slide, W * 0.62, 0, W * 0.38, Inches(0.1), self.s.accent)
+            tb, tf, p = self._text(slide, Inches(0.6), Inches(0.42), W - Inches(3.2),
+                                   Inches(0.7), size=size, anchor=MSO_ANCHOR.MIDDLE)
+            self._run(p, title, size=size, bold=True, color=self.s.main)
+            if kicker and kicker.strip() != title.strip():
+                tb2, tf2, p2 = self._text(slide, W - Inches(3.4), Inches(0.5),
+                                          Inches(2.85), Inches(0.5), size=12,
+                                          align=PP_ALIGN.RIGHT)
+                self._run(p2, kicker, size=12, bold=True, color=self.s.accent)
+            return
+
+        # tick（数学）：细线 + 左侧实心方块 + kicker chip
+        self._rect(slide, 0, 0, W, Inches(0.09), self.s.main)
+        self._rect(slide, Inches(0.6), Inches(0.5), Inches(0.14), Inches(0.14),
+                   self.s.accent)
+        self._rect(slide, Inches(0.6), Inches(0.72), Inches(0.14), Inches(0.14),
+                   self.s.accent)
+        tb, tf, p = self._text(slide, Inches(0.92), Inches(0.44), W - Inches(3.0),
+                               Inches(0.68), size=size, anchor=MSO_ANCHOR.MIDDLE)
+        self._rich(p, title, size=size, color=self.s.main, bold=True)
         if kicker and kicker.strip() != title.strip():
             self._chip(slide, kicker)
 
@@ -275,46 +348,217 @@ class Deck:
     # ------------------------------------------------------------ slides
     def cover(self, title: str, subtitle: str = "", meta: str = "", tag: str = "",
               index: str = ""):
+        """六种封面版式：vertical / grid / split / ruler / molecule / cell。"""
         s = self._blank()
-        self._rect(s, W * 0.58, 0, W * 0.42, H, self.t.main)
-        self._rect(s, W * 0.575, 0, Inches(0.09), H, self.t.accent)
-        self._rect(s, 0, 0, Inches(0.16), H, self.t.main)
-
-        if index:
-            tb, tf, p = self._text(s, W * 0.6, Inches(0.75), W * 0.36, Inches(0.9),
-                                   size=40, align=PP_ALIGN.RIGHT)
-            self._run(p, index, size=40, bold=True, color=self.t.gold)
-            self._rect(s, W * 0.6 + Inches(0.1), Inches(1.62), W * 0.36 - Inches(0.35),
-                       Emu(28575), self.t.accent)
-
+        kind = self.s.cover
         title = _soft_wrap(title, 13)
         longest = max(len(x) for x in title.split("\v"))
-        avail_in = (W * 0.47) / 914400.0
-        tsize = int(min(42, max(20, avail_in * 72.0 / max(longest, 1) * 0.92)))
-        tb, tf, p = self._text(s, Inches(0.95), Inches(2.0), W * 0.47, Inches(2.2),
-                               size=tsize, line_spacing=1.2)
-        for li, line in enumerate(title.split("\v")):
-            if li:
-                p.add_line_break()          # 真正的软换行，不是字面量
-            self._rich(p, line, size=tsize, color=self.t.main, bold=True)
+        tsize = int(min(42, max(20, (W * 0.47) / 914400.0 * 72.0 / max(longest, 1) * 0.92)))
 
-        if subtitle:
-            tb2, tf2, p2 = self._text(s, Inches(1.0), Inches(3.95), W * 0.48, Inches(0.9),
-                                      size=20, line_spacing=1.3)
-            self._run(p2, subtitle, size=20, color=_rgb("44506B"))
-        self._rect(s, Inches(1.0), Inches(5.05), Inches(1.5), Emu(38100), self.t.accent)
-        if meta:
-            tb3, tf3, p3 = self._text(s, Inches(1.0), Inches(5.25), W * 0.5, Inches(0.5),
-                                      size=13)
-            self._run(p3, meta, size=13, color=_rgb("7A8698"))
-        if tag:
-            tw = Inches(0.2 * len(tag) + 0.5)
-            self._rect(s, W - tw - Inches(0.7), H - Inches(1.15), tw, Inches(0.46),
-                       self.t.white, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.4)
-            tb4, tf4, p4 = self._text(s, W - tw - Inches(0.7), H - Inches(1.13), tw,
-                                      Inches(0.42), size=13, align=PP_ALIGN.CENTER,
+        if kind == "vertical":
+            self._rect(s, 0, 0, W, H, self.s.paper)
+            self._rect(s, 0, 0, W, Inches(0.09), self.s.main)
+            self._rect(s, 0, H - Inches(0.09), W, Inches(0.09), self.s.accent)
+            # 竖排标题：一列到底（关闭自动换行，字号按字数缩放）
+            flat = title.replace("\v", "")
+            vlen = max(len(flat), 1)
+            vsize = 34 if vlen <= 10 else (28 if vlen <= 13 else (24 if vlen <= 16 else 20))
+            tx = W - Inches(2.15)
+            tb, tf, p = self._text(s, tx, Inches(1.05), Inches(1.5), Inches(5.2),
+                                   size=vsize, align=PP_ALIGN.CENTER,
+                                   anchor=MSO_ANCHOR.TOP, vertical=True, line_spacing=1.0)
+            tf.word_wrap = False
+            self._run(p, flat, size=vsize, bold=True, color=self.s.main)
+            # 朱砂印章
+            seal_y = min(Inches(5.55), Inches(1.05) + Inches(vsize / 72.0) * vlen + Inches(0.35))
+            seal_x = tx + Inches(0.4)
+            self._rect(s, seal_x, seal_y, Inches(0.72), Inches(0.72),
+                       self.s.accent, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.08)
+            tb2, tf2, p2 = self._text(s, seal_x, seal_y + Inches(0.1), Inches(0.72),
+                                      Inches(0.55), size=14, align=PP_ALIGN.CENTER,
                                       anchor=MSO_ANCHOR.MIDDLE)
-            self._run(p4, tag, size=13, bold=True, color=self.t.main)
+            self._run(p2, "语\n文", size=15, bold=True, color=self.s.white)
+            # 左侧：讲次 + 副标题 + 元信息
+            if index:
+                tb3, tf3, p3 = self._text(s, Inches(0.95), Inches(1.15), Inches(6.2),
+                                          Inches(0.6), size=18)
+                self._run(p3, index, size=18, bold=True, color=self.s.accent)
+            if subtitle:
+                tb4, tf4, p4 = self._text(s, Inches(0.95), Inches(1.85), Inches(6.4),
+                                          Inches(0.7), size=20)
+                self._run(p4, subtitle, size=20, color=_rgb("4A4034"))
+            self._rect(s, Inches(0.98), Inches(2.75), Inches(1.1), Emu(28575), self.s.accent)
+            if meta:
+                tb5, tf5, p5 = self._text(s, Inches(0.95), Inches(3.0), Inches(6.4),
+                                          Inches(2.6), size=13, line_spacing=1.6)
+                self._run(p5, meta, size=13, color=_rgb("6B6257"))
+
+        elif kind == "grid":
+            self._rect(s, 0, 0, W, H, self.s.white)
+            ss.draw_deco(s, self.s)
+            self._rect(s, 0, 0, Inches(0.14), H, self.s.main)
+            self._rect(s, 0, 0, W, Inches(0.1), self.s.main)
+            if index:
+                tb, tf, p = self._text(s, Inches(0.95), Inches(1.05), Inches(5.6),
+                                       Inches(0.7), size=16)
+                self._run(p, index, size=16, bold=True, color=self.s.accent)
+            tb, tf, p = self._text(s, Inches(0.95), Inches(2.0), W * 0.58, Inches(2.2),
+                                   size=tsize, line_spacing=1.2)
+            for i, line in enumerate(title.split("\v")):
+                if i:
+                    p.add_line_break()
+                self._run(p, line, size=tsize, bold=True, color=self.s.main)
+            self._rect(s, Inches(0.98), Inches(3.95), Inches(0.9), Inches(0.09),
+                       self.s.accent)
+            if subtitle:
+                tb2, tf2, p2 = self._text(s, Inches(0.98), Inches(4.25), W * 0.5,
+                                          Inches(0.8), size=20)
+                self._run(p2, subtitle, size=20, color=_rgb("4A5568"))
+            if meta:
+                tb3, tf3, p3 = self._text(s, Inches(0.98), Inches(5.2), W * 0.5,
+                                          Inches(0.5), size=13)
+                self._run(p3, meta, size=13, color=_rgb("7A8698"))
+            if tag:
+                tw = Inches(0.2 * len(tag) + 0.5)
+                self._rect(s, W - tw - Inches(0.8), H - Inches(1.2), tw, Inches(0.44),
+                           self.s.main, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+                tb4, tf4, p4 = self._text(s, W - tw - Inches(0.8), H - Inches(1.18), tw,
+                                          Inches(0.4), size=13, align=PP_ALIGN.CENTER,
+                                          anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p4, tag, size=13, bold=True, color=self.s.white)
+
+        elif kind == "split":
+            self._rect(s, W * 0.5, 0, W * 0.5, H, self.s.main)
+            self._rect(s, W * 0.5 - Inches(0.06), 0, Inches(0.1), H, self.s.accent)
+            ss.draw_deco(s, self.s)
+            if index:
+                tb, tf, p = self._text(s, Inches(0.95), Inches(1.1), Inches(5.4),
+                                       Inches(0.6), size=15)
+                self._run(p, index, size=15, bold=True, color=self.s.accent)
+            tb, tf, p = self._text(s, Inches(0.95), Inches(2.0), W * 0.44, Inches(2.4),
+                                   size=int(tsize * 0.86), line_spacing=1.2)
+            for i, line in enumerate(title.split("\v")):
+                if i:
+                    p.add_line_break()
+                self._run(p, line, size=int(tsize * 0.86), bold=True, color=self.s.main)
+            if subtitle:
+                tb2, tf2, p2 = self._text(s, W * 0.5 + Inches(0.55), Inches(1.9),
+                                          W * 0.42, Inches(2.4), size=19,
+                                          line_spacing=1.5)
+                self._run(p2, subtitle, size=19, color=self.s.white)
+            if meta:
+                tb3, tf3, p3 = self._text(s, W * 0.5 + Inches(0.55), Inches(4.5),
+                                          W * 0.42, Inches(0.9), size=12)
+                self._run(p3, meta, size=12, color=_rgb("C9CEE8"))
+            if tag:
+                tb4, tf4, p4 = self._text(s, W * 0.5 + Inches(0.6), Inches(5.9),
+                                          W * 0.4, Inches(0.5), size=14,
+                                          align=PP_ALIGN.RIGHT)
+                self._run(p4, tag.upper(), size=14, bold=True, color=self.s.accent)
+
+        elif kind == "ruler":
+            self._rect(s, 0, 0, W, H, self.s.main)
+            self._rect(s, 0, 0, W, Inches(0.16), self.s.accent)
+            ss.draw_deco(s, self.s)
+            y = H - Inches(1.55)
+            for i in range(40):
+                h = Inches(0.3) if i % 5 == 0 else Inches(0.15)
+                t = self._rect(s, Inches(0.6) + (W - Inches(1.2)) / 40 * i, y - h,
+                               Emu(9525), h, _rgb("3A5375"))
+            self._rect(s, Inches(0.6), y, W - Inches(1.2), Emu(12700), _rgb("5C7BA6"))
+            if index:
+                tb, tf, p = self._text(s, Inches(0.9), Inches(1.0), Inches(5), Inches(0.6),
+                                       size=16)
+                self._run(p, index, size=16, bold=True, color=self.s.accent)
+            tb, tf, p = self._text(s, Inches(0.9), Inches(1.95), W - Inches(2.2),
+                                   Inches(2.1), size=tsize, line_spacing=1.2)
+            for i, line in enumerate(title.split("\v")):
+                if i:
+                    p.add_line_break()
+                self._run(p, line, size=tsize, bold=True, color=self.s.white)
+            if subtitle:
+                tb2, tf2, p2 = self._text(s, Inches(0.95), Inches(4.05), W - Inches(2.2),
+                                          Inches(0.8), size=19)
+                self._run(p2, subtitle, size=19, color=_rgb("C7D3E4"))
+            if meta:
+                tb3, tf3, p3 = self._text(s, Inches(0.95), Inches(4.8), W - Inches(2.2),
+                                          Inches(0.5), size=12)
+                self._run(p3, meta, size=12, color=_rgb("8FA2BC"))
+            if tag:
+                tw = Inches(0.2 * len(tag) + 0.6)
+                self._rect(s, W - tw - Inches(0.8), Inches(0.82), tw, Inches(0.44),
+                           self.s.white, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+                tb4, tf4, p4 = self._text(s, W - tw - Inches(0.8), Inches(0.85), tw,
+                                          Inches(0.4), size=13, align=PP_ALIGN.CENTER,
+                                          anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p4, tag, size=13, bold=True, color=self.s.main)
+
+        elif kind == "molecule":
+            # 化学：浅青底 + 墨绿标题 + 橙色分子网络（与物理的深色满版区分开）
+            self._rect(s, 0, 0, W, H, self.s.light)
+            ss.draw_deco(s, self.s)
+            self._rect(s, 0, 0, Inches(0.18), H, self.s.main)
+            self._rect(s, 0, H - Inches(0.16), W, Inches(0.16), self.s.accent)
+            if index:
+                tb, tf, p = self._text(s, Inches(0.9), Inches(1.05), Inches(5.4),
+                                       Inches(0.55), size=15)
+                self._run(p, index, size=15, bold=True, color=self.s.accent)
+            tb, tf, p = self._text(s, Inches(0.9), Inches(1.75), W * 0.62, Inches(2.4),
+                                   size=tsize, line_spacing=1.2)
+            for i, line in enumerate(title.split("\v")):
+                if i:
+                    p.add_line_break()
+                self._run(p, line, size=tsize, bold=True, color=self.s.main)
+            self._rect(s, Inches(0.93), Inches(3.9), Inches(1.2), Inches(0.09),
+                       self.s.accent)
+            if subtitle:
+                tb2, tf2, p2 = self._text(s, Inches(0.93), Inches(4.2), W * 0.6,
+                                          Inches(0.8), size=19)
+                self._run(p2, subtitle, size=19, color=_rgb("2F4F49"))
+            if meta:
+                tb3, tf3, p3 = self._text(s, Inches(0.93), Inches(5.15), W * 0.6,
+                                          Inches(0.5), size=12)
+                self._run(p3, meta, size=12, color=_rgb("5E807A"))
+            if tag:
+                tw = Inches(0.2 * len(tag) + 0.5)
+                self._rect(s, W - tw - Inches(0.8), H - Inches(1.25), tw, Inches(0.44),
+                           self.s.main, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+                tb4, tf4, p4 = self._text(s, W - tw - Inches(0.8), H - Inches(1.23), tw,
+                                          Inches(0.4), size=13, align=PP_ALIGN.CENTER,
+                                          anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p4, tag, size=13, bold=True, color=self.s.white)
+
+        else:  # cell
+            self._rect(s, 0, 0, W, H, self.s.light)
+            ss.draw_deco(s, self.s)
+            self._rect(s, 0, 0, W, Inches(0.14), self.s.main)
+            self._rect(s, 0, H - Inches(0.14), W, Inches(0.14), self.s.accent)
+            if index:
+                tb, tf, p = self._text(s, Inches(0.95), Inches(1.0), Inches(6), Inches(0.6),
+                                       size=15)
+                self._run(p, index, size=15, bold=True, color=self.s.accent)
+            tb, tf, p = self._text(s, Inches(0.95), Inches(1.8), W * 0.66, Inches(2.4),
+                                   size=int(tsize * 0.94), line_spacing=1.2)
+            for i, line in enumerate(title.split("\v")):
+                if i:
+                    p.add_line_break()
+                self._run(p, line, size=int(tsize * 0.94), bold=True, color=self.s.main)
+            if subtitle:
+                tb2, tf2, p2 = self._text(s, Inches(0.98), Inches(4.2), W * 0.6,
+                                          Inches(0.8), size=19)
+                self._run(p2, subtitle, size=19, color=_rgb("3F5C57"))
+            if meta:
+                tb3, tf3, p3 = self._text(s, Inches(0.98), Inches(5.2), W * 0.6,
+                                          Inches(0.5), size=12)
+                self._run(p3, meta, size=12, color=_rgb("6B8C85"))
+            if tag:
+                tw = Inches(0.2 * len(tag) + 0.5)
+                self._rect(s, W - tw - Inches(0.8), H - Inches(1.2), tw, Inches(0.44),
+                           self.s.main, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+                tb4, tf4, p4 = self._text(s, W - tw - Inches(0.8), H - Inches(1.18), tw,
+                                          Inches(0.4), size=13, align=PP_ALIGN.CENTER,
+                                          anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p4, tag, size=13, bold=True, color=self.s.white)
         return s
 
     def divider(self, title: str, index: str = "", subtitle: str = "", spine: str = ""):
@@ -358,6 +602,8 @@ class Deck:
             left = Inches(0.85)
 
         size, spacing = _fit(items, base=26 if density == "normal" else 21)
+        if self.s.key == "chinese":
+            spacing = max(spacing, 14)
         if lead:
             tb, tf, p = self._text(s, left, top, W - left - Inches(0.85), Inches(0.7),
                                    size=17, line_spacing=1.25)
@@ -588,6 +834,193 @@ class Deck:
         self._chrome(s)
         return s
 
+    # ------------------------------------------------ 学科专属版式
+    def quote(self, title: str, text: str, *, source: str = "", note: str = "",
+              kicker: str = "原文"):
+        """语文：引文页——大段原文居中，右侧朱砂竖条，出处小字。"""
+        s = self._blank()
+        self._header(s, title, kicker=kicker)
+        self._rect(s, Inches(0.9), Inches(1.6), W - Inches(1.8), H - Inches(2.9),
+                   self.s.light, shape=MSO_SHAPE.RECTANGLE)
+        self._rect(s, Inches(0.9), Inches(1.6), Inches(0.08), H - Inches(2.9),
+                   self.s.accent)
+        size = 26 if len(text) < 90 else (22 if len(text) < 180 else 19)
+        tb, tf, p = self._text(s, Inches(1.35), Inches(1.75), W - Inches(2.9),
+                               H - Inches(3.2), size=size, line_spacing=1.85,
+                               anchor=MSO_ANCHOR.MIDDLE)
+        tf.word_wrap = True
+        p.paragraph_format if False else None
+        tb.width = W - Inches(2.9)
+        self._rich(p, text, size=size, color=self.s.ink)
+        if source:
+            tb2, tf2, p2 = self._text(s, Inches(1.3), H - Inches(1.55), W - Inches(3.4),
+                                      Inches(0.4), size=13, align=PP_ALIGN.RIGHT)
+            self._run(p2, f"—— {source}", size=13, color=_rgb("6B6257"),
+                      cn=self.s.font_head)
+        if note:
+            tb3, tf3, p3 = self._text(s, Inches(1.3), H - Inches(1.1), W - Inches(2.7),
+                                      Inches(0.4), size=12)
+            self._run(p3, note, size=12, color=self.s.accent)
+        self._chrome(s)
+        return s
+
+    def formula(self, title: str, formula: str, *, note: str = "", legs: list[str] | None = None,
+                kicker: str = ""):
+        """数学/物理/化学：公式页——公式居中大字，下面两栏「条件 / 结论」或分步说明。"""
+        s = self._blank()
+        self._header(s, title, kicker=kicker)
+        self._rect(s, Inches(0.8), Inches(1.5), W - Inches(1.6), Inches(1.75),
+                   self.s.light, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.04)
+        fsize = 40 if len(formula) < 26 else (32 if len(formula) < 48 else 26)
+        tb, tf, p = self._text(s, Inches(1.1), Inches(1.6), W - Inches(2.2), Inches(1.55),
+                               size=fsize, align=PP_ALIGN.CENTER,
+                               anchor=MSO_ANCHOR.MIDDLE, line_spacing=1.2)
+        self._run(p, formula, size=fsize, bold=True, color=self.s.main)
+        if note:
+            tb2, tf2, p2 = self._text(s, Inches(1.1), Inches(3.35), W - Inches(2.2),
+                                      Inches(0.5), size=13, align=PP_ALIGN.CENTER)
+            self._run(p2, note, size=13, color=_rgb("6B7785"))
+        if legs:
+            n = min(2, len(legs))
+            gap = Inches(0.3)
+            cw = (W - Inches(1.6) - gap * (n - 1)) / n
+            for i, leg in enumerate(legs[:2]):
+                x = Inches(0.8) + (cw + gap) * i
+                self._rect(s, x, Inches(4.05), cw, H - Inches(5.15), self.s.white,
+                           line=_rgb("E2E6EE"), shape=MSO_SHAPE.ROUNDED_RECTANGLE,
+                           radius=0.04)
+                tb3, tf3, p3 = self._text(s, x + Inches(0.25), Inches(4.2),
+                                          cw - Inches(0.5), Inches(0.45), size=15)
+                self._run(p3, "条件" if i == 0 else "结论", size=15, bold=True,
+                          color=self.s.accent)
+                tb4, tf4, p4 = self._text(s, x + Inches(0.25), Inches(4.7),
+                                          cw - Inches(0.5), H - Inches(5.9), size=16,
+                                          line_spacing=1.5)
+                self._rich(p4, leg, size=16)
+        self._chrome(s)
+        return s
+
+    def compare(self, title: str, left_title: str, left_text: str,
+                right_title: str, right_text: str, *, kicker: str = "",
+                words: list[str] | None = None):
+        """英语：英汉对照页——左英文右中文，中间细线；底部可挂词块。"""
+        s = self._blank()
+        self._header(s, title, kicker=kicker)
+        top = Inches(1.45)
+        bottom = H - Inches(1.15 if words else 0.7)
+        half = (W - Inches(1.9)) / 2
+        # 中缝：竖直细线，颜色要看得见
+        self._rect(s, W / 2 - Emu(6350), top + Inches(0.1), Emu(12700),
+                   bottom - top - Inches(0.2), _rgb("DCE0EE"))
+        for i, (tt, body, col) in enumerate([(left_title, left_text, self.s.main),
+                                             (right_title, right_text, self.s.accent)]):
+            x = Inches(0.95) + (half + Inches(0.3)) * i
+            tb, tf, p = self._text(s, x, top, half, Inches(0.44), size=14)
+            self._run(p, tt, size=14, bold=True, color=col)
+            size = 19 if len(body) < 260 else 17
+            tb2, tf2, p2 = self._text(s, x, top + Inches(0.5), half,
+                                      bottom - top - Inches(0.55), size=size,
+                                      line_spacing=1.45)
+            self._rich(p2, body, size=size)
+        if words:
+            self._rect(s, Inches(0.62), H - Inches(1.05), W - Inches(1.24),
+                       Inches(0.62), self.s.light, shape=MSO_SHAPE.ROUNDED_RECTANGLE,
+                       radius=0.2)
+            tb3, tf3, p3 = self._text(s, Inches(0.85), H - Inches(0.98), W - Inches(1.7),
+                                      Inches(0.5), size=13, anchor=MSO_ANCHOR.MIDDLE)
+            self._run(p3, "词块　", size=13, bold=True, color=self.s.accent)
+            self._run(p3, "　·　".join(words[:6]), size=13, color=self.s.ink)
+        self._chrome(s)
+        return s
+
+    def reaction(self, title: str, equation: str, *, condition: str = "",
+                 note: str = "", points: list[str] | None = None,
+                 kicker: str = ""):
+        """化学：反应式页——条件写在箭头（或等号）上方，下方列现象/要点。"""
+        s = self._blank()
+        self._header(s, title, kicker=kicker)
+        # 方程式框（只装式子）
+        self._rect(s, Inches(0.8), Inches(1.4), W - Inches(1.6), Inches(1.25),
+                   self.s.light, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.05)
+        fsize = 32 if len(equation) < 34 else 26
+        tb, tf, p = self._text(s, Inches(1.0), Inches(1.45), W - Inches(2.0), Inches(1.15),
+                               size=fsize, align=PP_ALIGN.CENTER,
+                               anchor=MSO_ANCHOR.MIDDLE)
+        self._run(p, equation, size=fsize, bold=True, color=self.s.main)
+        y = Inches(2.78)
+        if condition:
+            # 反应条件单独一行（真实卷子写在等号上方，PPT 里放在式子下方最稳）
+            cw = Inches(0.19 * len(condition) + 0.9)
+            self._rect(s, W / 2 - cw / 2, y, cw, Inches(0.4), self.s.white,
+                       line=self.s.accent, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+            tb2, tf2, p2 = self._text(s, W / 2 - cw / 2, y + Inches(0.02), cw, Inches(0.36),
+                                      size=13, align=PP_ALIGN.CENTER,
+                                      anchor=MSO_ANCHOR.MIDDLE)
+            self._run(p2, f"条件：{condition}", size=13, bold=True, color=self.s.accent)
+            y += Inches(0.62)
+        if note:
+            tb3, tf3, p3 = self._text(s, Inches(1.0), y, W - Inches(2.0), Inches(0.5),
+                                      size=14, align=PP_ALIGN.CENTER)
+            self._rich(p3, note, size=14, color=_rgb("4A5A55"))
+            y += Inches(0.6)
+        if points:
+            size, sp = _fit(points, base=20)
+            tb4, tf4, p4 = self._text(s, Inches(0.85), max(y, Inches(3.5)),
+                                      W - Inches(1.7), H - Inches(4.5), size=size,
+                                      line_spacing=1.5)
+            for i, it in enumerate(points):
+                pp = self._p(tf4, first=(i == 0), space_before=0 if i == 0 else sp)
+                _indent(pp, 0.45, -0.45)
+                self._run(pp, "▪ ", size=size, color=self.s.accent)
+                self._rich(pp, it, size=size)
+        self._chrome(s)
+        return s
+
+    def concept(self, title: str, center: str, branches: list[tuple[str, list[str]]],
+                *, kicker: str = "归纳"):
+        """生物：概念图页——中心词 + 若干分支卡片（2×2）。"""
+        s = self._blank()
+        self._header(s, title, kicker=kicker)
+        cw = Inches(2.5)
+        ch = Inches(0.78)
+        cx = (W - cw) / 2
+        self._rect(s, cx, Inches(1.45), cw, ch, self.s.main,
+                   shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.18)
+        tb, tf, p = self._text(s, cx, Inches(1.45), cw, ch, size=20,
+                               align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+        self._run(p, center, size=20, bold=True, color=self.s.white)
+        self._rect(s, cx + cw / 2 - Emu(6350), Inches(2.23), Emu(12700), Inches(0.28),
+                   self.s.accent)
+        self._rect(s, Inches(1.6), Inches(2.51), W - Inches(3.2), Emu(12700),
+                   self.s.accent)
+        n = min(4, len(branches))
+        if n == 0:
+            self._chrome(s)
+            return s
+        gap = Inches(0.3)
+        bw = (W - Inches(1.6) - gap * (n - 1)) / n
+        for i, (label, items) in enumerate(branches[:n]):
+            x = Inches(0.8) + (bw + gap) * i
+            y = Inches(2.85)
+            self._rect(s, x + bw / 2 - Emu(6350), Inches(2.51), Emu(12700),
+                       Inches(0.34), self.s.accent)
+            self._rect(s, x, y, bw, H - Inches(3.9), self.s.light,
+                       shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.05)
+            tb2, tf2, p2 = self._text(s, x + Inches(0.18), y + Inches(0.14),
+                                      bw - Inches(0.36), Inches(0.4), size=15)
+            self._run(p2, label, size=15, bold=True, color=self.s.main)
+            size, sp = _fit(items, base=14)
+            tb3, tf3, p3 = self._text(s, x + Inches(0.2), y + Inches(0.62),
+                                      bw - Inches(0.4), H - Inches(4.7), size=size,
+                                      line_spacing=1.4)
+            for j, it in enumerate(items):
+                pp = self._p(tf3, first=(j == 0), space_before=0 if j == 0 else sp)
+                _indent(pp, 0.28, -0.28)
+                self._run(pp, "· ", size=size, color=self.s.accent)
+                self._rich(pp, it, size=size)
+        self._chrome(s)
+        return s
+
     def image(self, title: str, src: str, caption: str = "", *, kicker: str = "",
               band: bool = False):
         s = self._blank()
@@ -749,8 +1182,12 @@ def _new_item(name: str = "", stem: str = "") -> dict:
 def _split_section(sec: Section, quiz: bool = False):
     """把一节的块分成：要点 / 例题（题干+选项+答案+批注）/ 表格 / 配图 / 提醒。"""
     bullets, items, tables, images, tips = [], [], [], [], []
+    scenes: list[Block] = []
     cur = None
     for b in sec.blocks:
+        if b.kind == "scene":
+            scenes.append(b)
+            continue
         text = b.text.strip() if b.text else ""
         if b.kind == "table":
             tables.append(b.rows)
@@ -818,7 +1255,62 @@ def _split_section(sec: Section, quiz: bool = False):
             cur["stem"] = (cur["stem"] + " " + text).strip()
         else:
             bullets.append(text)
-    return bullets, items, tables, images, tips
+    return bullets, items, tables, images, tips, scenes
+
+
+def _render_scene(deck, block, sec_title: str) -> None:
+    """渲染 > 引文/公式/对照/反应/概念 这几类学科版式。"""
+    kind = (block.meta or {}).get("scene", "")
+    raw = block.text.strip()
+    head = f"{sec_title}｜{kind}" if sec_title else kind
+    if kind == "引文":
+        src = ""
+        m = re.search(r"[（(]?\s*(?:——|--)\s*(.+?)[）)]?$", raw)
+        body = raw
+        if m and len(m.group(1)) < 40:
+            src = m.group(1).strip()
+            body = raw[: m.start()].strip()
+        deck.quote(head, body, source=src)
+    elif kind == "公式":
+        parts = [x.strip() for x in raw.split("|")]
+        formula = parts[0]
+        legs, note = [], ""
+        for extra in parts[1:]:
+            if extra.startswith(("条件", "前提")):
+                legs.append(extra.split("：", 1)[-1].split(":", 1)[-1].strip())
+            elif extra.startswith(("结论", "适用")):
+                legs.append(extra.split("：", 1)[-1].split(":", 1)[-1].strip())
+            else:
+                note = extra
+        deck.formula(head, formula, note=note,
+                     legs=legs if len(legs) >= 2 else (legs + [""])[:2] if legs else None)
+    elif kind == "对照":
+        parts = [x.strip() for x in raw.split("|")]
+        if len(parts) >= 4:
+            deck.compare(head, parts[0], parts[1], parts[2], parts[3])
+        elif len(parts) == 2:
+            deck.compare(head, "English", parts[0], "中文", parts[1])
+        else:
+            deck.bullets(head, [raw])
+    elif kind == "反应":
+        parts = [x.strip() for x in raw.split("|")]
+        eq = parts[0]
+        cond = next((p.split("：", 1)[-1] for p in parts[1:] if p.startswith(("条件", "加热", "催化"))), "")
+        pts = [p for p in parts[1:] if not p.startswith(("条件", "加热", "催化"))]
+        deck.reaction(head, eq, condition=cond, points=pts or None)
+    elif kind == "概念":
+        segs = [x.strip() for x in raw.split(">") if x.strip()]
+        center = segs[0]
+        branches = []
+        for seg in segs[1:]:
+            if "：" in seg or ":" in seg:
+                lab, body = re.split(r"[:：]", seg, 1)
+                branches.append((lab.strip(), [x.strip() for x in re.split(r"[;；、]", body) if x.strip()]))
+            else:
+                branches.append((seg, []))
+        deck.concept(head, center, branches)
+    else:
+        deck.bullets(head, [raw])
 
 
 def _paged(title: str, items: list[str], per: int = 7, limit: int = 400) -> list[list[str]]:
@@ -854,20 +1346,30 @@ def _cover_index(hour: str) -> str:
     return f"第 {int(m.group()):02d} 讲" if m else ""
 
 
-def build_xuean_deck(md: str, out_path: str | Path, *, theme: str = "blue",
-                     school: str = "", author: str = "") -> Path:
+def build_xuean_deck(md: str, out_path: str | Path, *, theme: str = "",
+                     school: str = "", author: str = "", subject: str = "") -> Path:
     d = parse(md)
-    deck = Deck(theme=theme, footer=d.title, school=school)
+    subject = subject or d.meta.get("学科", "")
+    deck = Deck(theme=theme, subject=subject, footer=d.title, school=school)
     subject, grade = d.meta.get("学科", ""), d.meta.get("年级", "")
-    hour = d.meta.get("课时", "")
+    hour = d.meta.get("课时", "") if deck.s.key in ("physics", "chemistry", "biology") else ""
+    if re.search(r"第\s*\d+\s*[讲节课]|^\s*\d+\s*[.．]", d.title or ""):
+        hour = ""            # 标题自带编号，就不要再叠「第 NN 讲」
     sub = f"{grade}{subject}" if (grade or subject) else ""
     deck.cover(d.title or "学案", subtitle=sub, meta=school or author, tag="学案",
                index=_cover_index(hour))
 
     for idx, sec in enumerate([x for x in d.sections if x.title], 1):
         title = _clean_heading(sec.title)
+        if re.match(r"^(参考答案|答案与解析|答案及解析|答案)$", title):
+            deck.divider(title, index=f"{idx:02d}")
+            plain = [b.text.strip() for b in sec.blocks
+                     if b.kind in ("num", "text", "answer", "bullet") and b.text.strip()]
+            for chunk in _paged(title, plain, per=6, limit=340):
+                deck.bullets(title, chunk, kicker="答案")
+            continue
         is_quiz = bool(re.search(r"当堂检测|课堂检测|检测|练习|作业|自测", sec.title))
-        bullets, items, tables, images, tips = _split_section(sec, quiz=is_quiz)
+        bullets, items, tables, images, tips, scenes = _split_section(sec, quiz=is_quiz)
 
         if BIG.match(sec.title):
             deck.divider(title, index=f"{idx:02d}",
@@ -880,7 +1382,9 @@ def build_xuean_deck(md: str, out_path: str | Path, *, theme: str = "blue",
                 deck.bullets(title + ("（续）" if k else ""), chunk,
                              kicker=("学习目标" if "目标" in title else title[:10]),
                              band=bool(items or tables),
-                             spine="" if (items or tables) else "知识梳理")
+                             spine="知识梳理" if (not items and not tables
+                                                  and deck.s.key in ("math", "physics"))
+                             else "")
         for it in items:
             chunks = _chunks(it["stem"], 260) if it["stem"] else []
             for pi, part in enumerate(chunks):
@@ -896,6 +1400,8 @@ def build_xuean_deck(md: str, out_path: str | Path, *, theme: str = "blue",
             deck.table(title, rows, kicker=title[:10])
         for src, cap in images:
             deck.image(title, src, cap, kicker=title[:10], band=True)
+        for sc in scenes:
+            _render_scene(deck, sc, title)
         for tp in tips:
             deck.tip("特别提醒", tp)
 
@@ -903,11 +1409,12 @@ def build_xuean_deck(md: str, out_path: str | Path, *, theme: str = "blue",
     return deck.save(out_path)
 
 
-def build_paper_deck(md: str, out_path: str | Path, *, theme: str = "ink",
-                     school: str = "", mode: str = "review") -> Path:
-    """试卷 → 讲评课件：每题题干页（留白给学生） + 答案解析页。"""
+def build_paper_deck(md: str, out_path: str | Path, *, theme: str = "",
+                     school: str = "", mode: str = "review", subject: str = "") -> Path:
+    """试卷 → 讲评课件：每题题干页（留白给学生） + 答案解析页（视觉跟随学科）。"""
     d = parse(md)
-    deck = Deck(theme=theme, footer=d.title, school=school)
+    subject = subject or d.meta.get("学科", "")
+    deck = Deck(theme=theme, subject=subject or "general", footer=d.title, school=school)
     meta = "　".join(x for x in [d.meta.get("时间"), d.meta.get("满分")] if x)
     deck.cover(d.title or "试卷讲评", subtitle="试卷讲评" if mode == "review" else "试卷",
                meta=meta, tag="试卷讲评")

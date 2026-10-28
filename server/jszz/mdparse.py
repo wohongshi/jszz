@@ -123,6 +123,13 @@ def parse(md: str) -> Doc:
         # meta block  > key: value
         if stripped.startswith(">"):
             body = stripped.lstrip("> ").strip()
+            mm_scene = re.match(r"^(引文|公式|对照|反应|概念)\s*[:：]\s*(.+)$", body)
+            if mm_scene:
+                (cur.blocks if cur else doc.preface).append(
+                    Block("scene", text=mm_scene.group(2).strip(),
+                          meta={"scene": mm_scene.group(1)}))
+                i += 1
+                continue
             # 一行可写多组元信息：> 学科：物理 | 年级：高一 | 课时：1
             parts = [x.strip() for x in re.split(r"[|｜]", body) if x.strip()]
             pairs = []
