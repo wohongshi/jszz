@@ -17,6 +17,7 @@ from pathlib import Path
 from . import config
 from .bilibili import BilibiliClient
 from .zxxk import ZxxkClient
+from . import qrlogin
 
 PAGE = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -57,18 +58,43 @@ li{font-size:13px;color:var(--muted)}
 code{background:#eef2f7;padding:1px 5px;border-radius:4px;font-size:12px}
 a{color:var(--accent);text-decoration:none}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
+.qr-wrap{display:flex;gap:14px;align-items:flex-start;margin-top:10px}
+.qr-box{width:132px;height:132px;border:1px solid var(--line);border-radius:10px;
+background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto}
+.qr-box img{width:124px;height:124px;display:block}
+.qr-ph{font-size:13px;color:var(--muted);text-align:center;line-height:1.5}
+.qr-side{flex:1;min-width:0}
+.qr-state{font-size:13px;color:var(--muted);margin-bottom:8px;min-height:20px}
+.qr-state.ok{color:var(--ok)} .qr-state.bad{color:var(--bad)} .qr-state.wait{color:var(--warn)}
 </style></head><body><div class="wrap">
 <header><h1>jszz</h1><span class="sub">备课工具 · 本地控制台</span></header>
 <div class="sub">B站素材 / 学科网题目 / 学案与试卷生成 —— 登录态与依赖都在本机，不上传任何账号信息。</div>
 
 <div class="grid">
   <div class="card">
-    <h2>B站账号 <span id="b-badge" class="badge">检查中</span></h2>
-    <div class="hint">未登录也能搜索和下载 1080P；登录后可取 AI 字幕、会员清晰度。</div>
-    <label>Cookie（浏览器 F12 → Application → Cookies → bilibili.com，复制 SESSDATA 即可）</label>
-    <textarea id="b-cookie" placeholder="SESSDATA=xxxxx; bili_jct=xxxxx"></textarea>
-    <button onclick="save('bilibili')">保存 Cookie</button>
-    <button class="ghost" onclick="test('bilibili')">测试连通</button>
+    <h2>B站账号 <span style="display:flex;gap:8px;align-items:center">
+      <span id="b-badge" class="badge">检查中</span>
+      <button class="ghost" style="margin:0;padding:4px 10px;font-size:12px" onclick="test('bilibili')">测试连通</button>
+    </span></h2>
+    <div class="hint">扫码登录最省事；不登录也能搜索、下载 1080P，登录后可取 AI 字幕与会员清晰度。</div>
+
+    <div class="qr-wrap">
+      <div class="qr-box" id="qr-box" onclick="startQr()" title="点击获取二维码">
+        <div class="qr-ph">二维码<br>占位</div>
+      </div>
+      <div class="qr-side">
+        <div id="qr-state" class="qr-state">尚未获取二维码</div>
+        <button onclick="startQr()">获取二维码</button>
+        <div class="hint" style="margin-top:6px">B 站 App → 我的 → 扫一扫</div>
+      </div>
+    </div>
+
+    <details style="margin-top:10px">
+      <summary class="hint" style="cursor:pointer">或者手动粘贴 Cookie</summary>
+      <label>Cookie（F12 → Application → Cookies → bilibili.com，复制 SESSDATA）</label>
+      <textarea id="b-cookie" placeholder="SESSDATA=xxxxx; bili_jct=xxxxx"></textarea>
+      <button class="ghost" onclick="save('bilibili')">保存 Cookie</button>
+    </details>
     <div class="msg" id="b-msg"></div>
   </div>
 
@@ -142,6 +168,37 @@ async function refresh(){
       env: { PYTHONPATH: s.server_path, JSZZ_HOME: s.home }
     } }
   }, null, 2);
+}
+let qrTimer = null, qrKey = null;
+async function startQr(){
+  if (qrTimer) { clearInterval(qrTimer); qrTimer = null; }
+  $('qr-state').className = 'qr-state'; $('qr-state').textContent = '获取中…';
+  const r = await api('/api/qr/start', {site:'bilibili'});
+  if (!r.ok) { $('qr-state').className='qr-state bad'; $('qr-state').textContent = r.error || '获取失败'; return; }
+  qrKey = r.key;
+  $('qr-box').innerHTML = '<img alt="B站登录二维码" src="' + r.qr + '">';
+  $('qr-state').className = 'qr-state wait'; $('qr-state').textContent = '等待扫码（3 分钟内有效）';
+  qrTimer = setInterval(pollQr, 2000);
+}
+async function pollQr(){
+  if (!qrKey) return;
+  const r = await api('/api/qr/poll', {site:'bilibili', key: qrKey});
+  if (!r.ok) { $('qr-state').className='qr-state bad'; $('qr-state').textContent = r.error || '轮询失败'; return; }
+  if (r.state === 'ok') {
+    clearInterval(qrTimer); qrTimer = null; qrKey = null;
+    $('qr-box').innerHTML = '<div class="qr-ph" style="color:#16a34a">✓<br>已登录</div>';
+    $('qr-state').className = 'qr-state ok';
+    $('qr-state').textContent = '登录成功' + (r.uname ? '：' + r.uname : '') + '，cookie 已保存';
+    refresh();
+  } else if (r.state === 'scanned') {
+    $('qr-state').className = 'qr-state wait'; $('qr-state').textContent = '已扫码，请在手机上点确认';
+  } else if (r.state === 'expired') {
+    clearInterval(qrTimer); qrTimer = null;
+    $('qr-state').className = 'qr-state bad'; $('qr-state').textContent = '二维码已失效，点左侧重新获取';
+    $('qr-box').innerHTML = '<div class="qr-ph">已失效<br>点击刷新</div>';
+  } else {
+    $('qr-state').className = 'qr-state wait'; $('qr-state').textContent = '等待扫码（3 分钟内有效）';
+  }
 }
 async function save(site){
   const val = site === 'bilibili' ? $('b-cookie').value : $('z-cookie').value;
@@ -266,6 +323,17 @@ class Handler(BaseHTTPRequestHandler):
             config.save(cfg)
             return self._json({"ok": True, "config": cfg})
 
+        if path == "/api/qr/start":
+            return self._json(qrlogin.start(body.get("site") or "bilibili"))
+        if path == "/api/qr/poll":
+            key = str(body.get("key") or "")
+            r = qrlogin.poll(key, body.get("site") or "bilibili")
+            if r.get("state") == "ok" and r.get("has_sessdata"):
+                config.write_cookie("bilibili", r["cookie"])
+                v = qrlogin.verify(r["cookie"])
+                r["verified"] = v.get("ok")
+                r["uname"] = v.get("uname")
+            return self._json(r)
         if path == "/api/test":
             site = body.get("site")
             if site == "bilibili":

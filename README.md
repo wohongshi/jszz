@@ -34,6 +34,7 @@ Cherry Studio …）都能调。
 | 6 | 试卷转讲评 PPT | `make_paper_md(pptx=True)` |
 | 7 | 登录态 / 依赖自检 / 产物下载的本地控制台 | `jszz web` |
 | 9 | 产出体检（越界/溢出/占位符/空白页/表格超宽） | `lint_markdown` · `jszz check` |
+| 10 | B站扫码登录（官方二维码 API，无需浏览器） | 控制台「获取二维码」 |
 | 8 | 技能包 `jszz.skill`（SKILL.md + 6 篇排版规范） | 下载仓库根目录的 `jszz.skill` |
 
 ## 安装
@@ -80,8 +81,8 @@ jszz serve --http --port 8765     # streamable-http 端点 http://127.0.0.1:8765
 jszz web            # http://127.0.0.1:8770/
 ```
 
-- B站 cookie（`SESSDATA`）：解锁 AI 字幕、会员清晰度
-- 学科网 cookie：解锁原文件下载与组卷网搜题；不放也能搜、能读预览页
+- **B站扫码登录**：点「获取二维码」→ B 站 App 扫一扫 → 自动写入 cookie（也可手动粘贴 SESSDATA）
+- 学科网 cookie：解锁原文件下载与组卷网搜题；不填也能搜索、能读预览页
 - 依赖自检：`yt-dlp` / `ffmpeg` / `node`
 - 一键复制 MCP 配置
 
@@ -120,6 +121,10 @@ jszz paper examples/paper-wuli.md        # → ~/.jszz/out/paper/*.docx / *.pptx
 **两套页头。** 栏目式用于目标/考情/小结，通栏式（深蓝通栏白字）用于考点/知识点/例题/答案，
 翻页时读者靠页头形态就知道自己在哪一类页面。
 
+**六科不是一套模板。** 语文按「字词→活用→句式→常识」五层、数学按「知识诊断+考点1–3」、
+英语按「一话题四件套」、物理化学按「知识点→考向→真题」、生物按「精读教材→教考衔接→练透考法」。
+`skill/references/07-六科学案模板.md` 是从 100+ 份真实学案里逆向出来的。
+
 **产出体检。** `lint_markdown` 检查写作层（挖空配对、大题分值、选项写法、题号跳号），
 `jszz check` 检查文件层（形状越界、文本框溢出、占位符残留、空白页、表格超宽、页眉缺失）。
 
@@ -137,7 +142,8 @@ server/jszz/
   assemble.py      组卷
   webui.py         本地控制台（标准库，零依赖）
   cli.py           命令行
-skill/             jszz.skill（SKILL.md + 6 篇规范）
+skill/             jszz.skill（SKILL.md + 7 篇规范，含六科学案模板）
+docs/六科内容地图.md  100+ 份真实学案/课件的内容清单与教学法
 examples/          可直接跑的示例
 docs/              语料分析报告
 ```
