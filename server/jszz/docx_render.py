@@ -26,7 +26,7 @@ CN_HEAD = "黑体"
 CN_TITLE = "华文中宋"
 EN_BODY = "Times New Roman"
 GREY = RGBColor(0x59, 0x59, 0x59)
-ANSWER_INK = RGBColor(0x8A, 0x1B, 0x1B)
+ANSWER_INK = RGBColor(0x6B, 0x12, 0x12)
 
 PAGE_W, PAGE_H = Cm(21.0), Cm(29.7)
 
@@ -196,7 +196,7 @@ def _header(section, *, school="", subject="", grade="", title="",
         tbl_borders.append(el)
     bottom = OxmlElement("w:bottom")
     bottom.set(qn("w:val"), "single")
-    bottom.set(qn("w:sz"), "6")
+    bottom.set(qn("w:sz"), "8")
     bottom.set(qn("w:color"), "808080")
     tbl_borders.append(bottom)
     tblPr.append(tbl_borders)
@@ -381,6 +381,61 @@ def _render_blocks(doc, blocks, *, body_size=12, indent=0.74, line=1.5,
             _shade(p, "FDECEC")
             _left_bar(p, "C81E1E")
             _write_runs(p, b.text, body_size, color=RGBColor(0x8A, 0x1B, 0x1B))
+        elif b.kind == "scene":
+            # PPT 专属版式（公式/引文/对照/反应/概念）在 docx 里落成可读文本，
+            # 不能丢——曾导致「知识点2 三个基本公式」标题下整节空白。
+            meta = b.meta or {}
+            st = meta.get("scene", "")
+            text = b.text or ""
+            if st == "公式" and "|" in text:
+                parts = [x.strip() for x in text.split("|")]
+                formula = parts[0]
+                cond = next((x.split("：", 1)[1] for x in parts if x.startswith("条件：")), "")
+                concl = next((x.split("：", 1)[1] for x in parts
+                              if x.startswith(("结论：", "要点："))), "")
+                p = _para(doc, "", size=body_size + 4, align=WD_ALIGN_PARAGRAPH.CENTER,
+                          line=1.3, space_after=2)
+                pf = p.paragraph_format
+                pf.keep_with_next = True
+                _style_run(p.add_run(formula), CN_BODY, EN_BODY, body_size + 4, bold=True)
+                if cond or concl:
+                    bits = "　".join(x for x in
+                                    ([f"条件：{cond}"] if cond else []) +
+                                    ([f"结论：{concl}"] if concl else []) if x)
+                    _para(doc, bits, size=body_size - 1, color=GREY,
+                          align=WD_ALIGN_PARAGRAPH.CENTER, line=1.3, space_after=6)
+            elif st == "引文" and "|" in text:
+                body, _, src = text.rpartition("|")
+                p = _para(doc, body.strip(), size=body_size + 1, first_indent=indent,
+                          line=line, space_after=2)
+                if src.strip():
+                    _para(doc, "—— " + src.strip(" ——"), size=body_size - 1,
+                          align=WD_ALIGN_PARAGRAPH.RIGHT, color=GREY, space_after=6)
+            elif st == "对照" and "|" in text:
+                left, _, right = text.partition("|")
+                for lab, seg in (("EN", left), ("CN", right)):
+                    p = _para(doc, "", size=body_size, first_indent=indent, line=line,
+                              space_after=2)
+                    _style_run(p.add_run(f"[{lab}] "), CN_HEAD, EN_BODY, body_size - 1,
+                               bold=True, color=RGBColor(0x2E, 0x75, 0xB6))
+                    _style_run(p.add_run(seg.strip()), CN_BODY, EN_BODY, body_size)
+            else:
+                # 反应/概念/其他：按「key：value | key：value」拆成短行
+                p = _para(doc, "", size=body_size, first_indent=indent, line=line,
+                          space_after=2)
+                for i, seg in enumerate(text.split("|")):
+                    seg = seg.strip()
+                    if not seg:
+                        continue
+                    if i:
+                        p.add_run().add_break()
+                    if "：" in seg[:4]:
+                        k, _, v = seg.partition("：")
+                        _style_run(p.add_run(k + "："), CN_BODY, EN_BODY, body_size,
+                                   bold=True, color=RGBColor(0x2E, 0x75, 0xB6))
+                        _style_run(p.add_run(v), CN_BODY, EN_BODY, body_size)
+                    else:
+                        _style_run(p.add_run(seg), CN_BODY, EN_BODY, body_size)
         elif b.kind == "break":
             doc.add_page_break()
 
@@ -411,11 +466,11 @@ def render_xuean(md: str, out_path: str | Path, *, school: str = "",
               space_after=6, line=1.1)
 
     if d.preface:
-        _render_blocks(doc, d.preface, answers=answers)
+        _render_blocks(doc, d.preface, answers=answers, line=1.8)
 
     for s in d.sections:
         if not s.title:
-            _render_blocks(doc, s.blocks, answers=answers)
+            _render_blocks(doc, s.blocks, answers=answers, line=1.8)
             continue
         if s.level == 2:
             if BIG_SECTION.match(s.title):
@@ -428,7 +483,7 @@ def render_xuean(md: str, out_path: str | Path, *, school: str = "",
                 _heading(doc, s.title, 3, color=RGBColor(0x00, 0x00, 0xC0))
             else:
                 _heading(doc, s.title, 3)
-        _render_blocks(doc, s.blocks, answers=answers)
+        _render_blocks(doc, s.blocks, answers=answers, line=1.8)
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)

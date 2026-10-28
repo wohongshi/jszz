@@ -28,14 +28,15 @@ Cherry Studio …）都能调。
 |---|---|---|
 | 1 | B站搜索 / 详情 / 字幕 / 音视频下载 | `bili_search` `bili_video_info` `bili_subtitle` `bili_download` `bili_audio_stream` |
 | 2 | 学科网搜索 / 版本清单 / 预览正文 / **还原 docx** / 抠图 / 组卷网搜题 | `zxxk_search` `zxxk_document` `zxxk_preview_files` `zxxk_preview_text` `zxxk_preview_docx` `zxxk_preview_images` `zxxk_questions` `zxxk_knowledge_questions` |
-| 3 | 学案编写（docx） | `make_xuean` |
-| 4 | 学案自动生成 PPT | `make_xuean(pptx=True)` |
-| 5 | 试卷编写 / 组卷（docx，带答案页） | `make_paper_md` `assemble_paper` |
-| 6 | 试卷转讲评 PPT | `make_paper_md(pptx=True)` |
-| 7 | 登录态 / 依赖自检 / 产物下载的本地控制台 | `jszz web` |
+| 3 | **一键讲评**（学科网资料 → docx + 讲评 PPT） | `zxxk_review_deck` |
+| 4 | 学案编写（docx，可出答案版） | `make_xuean` |
+| 5 | 学案自动生成 PPT | `make_xuean(pptx=True)` |
+| 6 | 试卷编写 / 组卷（docx，带答案页） | `make_paper_md` `assemble_paper` |
+| 7 | 试卷转讲评 PPT | `make_paper_md(pptx=True)` |
+| 8 | 登录态 / 依赖自检 / 产物下载的本地控制台 | `jszz web` |
 | 9 | 产出体检（越界/溢出/占位符/空白页/表格超宽） | `lint_markdown` · `jszz check` |
 | 10 | B站扫码登录（官方二维码 API，无需浏览器） | 控制台「获取二维码」 |
-| 8 | 技能包 `jszz.skill`（SKILL.md + 6 篇排版规范） | 下载仓库根目录的 `jszz.skill` |
+| 11 | 技能包 `jszz.skill`（SKILL.md + 10 篇排版规范） | 下载仓库根目录的 `jszz.skill` |
 
 ## 安装
 

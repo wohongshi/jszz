@@ -71,9 +71,12 @@ apt install nodejs
    （免登录；公式/图形是位图，读不到，但可以 `zxxk_preview_images` 导出）
 4. 想要**能改的卷子**：`zxxk_preview_docx(document_id, version=0)` 直接还原成 docx
    （文字可编辑 + 公式图形位图），比手抄快得多
-3. 把读到的内容整理成 Markdown（语法见 `references/04-markdown.md`）
-4. `make_xuean(markdown, pptx=True)` 或 `make_paper_md(markdown)`
-5. 返回的 `files.docx` / `files.pptx` 就是成品路径，直接给老师
+5. **一键讲评**：`zxxk_review_deck(document_id)` 一步到位——预览正文整理成试卷
+   Markdown（自动提「时间/满分」元信息、注意事项单列、选项归组）→ 打印 docx +
+   讲评 PPT（跟随学科风格）。公式是位图的题干会缺符号，介意就先 `zxxk_preview_docx`
+6. 把读到的内容整理成 Markdown（语法见 `references/04-markdown.md`）
+7. `make_xuean(markdown, pptx=True)` 或 `make_paper_md(markdown)`
+8. 返回的 `files.docx` / `files.pptx` 就是成品路径，直接给老师
 
 > 预览页只覆盖前几页（常见 2–6 页）。整份卷子的后半部分、答案页通常要下载原件，
 > 这时需要 `zxxk` cookie（WebUI 里粘贴）。

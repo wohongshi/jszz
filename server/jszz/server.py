@@ -269,6 +269,46 @@ def make_xuean(markdown: str, name: str = "", docx: bool = True,
 
 
 @mcp.tool()
+def zxxk_review_deck(document_id: int, name: str = "", version: int = 0,
+                     max_pages: int = 0, docx: bool = True, pptx: bool = True) -> dict:
+    """一键链路：学科网资料 → 试卷 Markdown → 打印 docx + 讲评 PPT。
+
+    自动读预览正文（解析版优先：version=1 有答案时并入参考答案节），
+    整理成试卷 Markdown 后走 make_paper_md 同款渲染。免登录可用；
+    预览只有前 3–5 页（免费限制），要全本先 zxxk_preview_docx 下载。
+    """
+    cli = _zxxk()
+    r = cli.preview_text(document_id, max_pages=max_pages, version=version)
+    if not r.get("ok"):
+        return {"ok": False, "reason": r.get("reason") or "预览读取失败"}
+    from .zxxk import preview_to_paper_md
+    title = name or r.get("title") or "试卷"
+    detail = r.get("detail") or {}
+    md = preview_to_paper_md(r.get("pages") or [], title=title,
+                             subject=detail.get("subject") or "",
+                             grade=detail.get("grade") or "")
+    base = _slug(title)
+    d = _out("review")
+    files: dict[str, str] = {}
+    (d / f"{base}.md").write_text(md, "utf-8")
+    files["md"] = str(d / f"{base}.md")
+    if docx:
+        files["docx"] = str(render_paper(md, d / f"{base}.docx",
+                                         school=config.load().get("school", "")))
+    if pptx:
+        files["pptx"] = str(build_paper_deck(md, d / f"{base}.pptx",
+                                             school=config.load().get("school", ""),
+                                             subject=detail.get("subject") or ""))
+    report = _qa_check(md=md, docx=files.get("docx"), pptx=files.get("pptx"))
+    return {"ok": True, "files": files, "title": title,
+            "pages_read": len(r.get("pages") or []),
+            "preview_total": r.get("preview_total"),
+            "questions": len(re.findall(r"^\s*\d{1,2}[.．、]", md, re.M)),
+            "has_answers": "参考答案" in md,
+            "qa": _qa_summary(report)}
+
+
+@mcp.tool()
 def make_paper_md(markdown: str, name: str = "", docx: bool = True,
                   pptx: bool = True, with_answers: bool = True,
                   theme: str = "ink") -> dict:

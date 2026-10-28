@@ -344,6 +344,87 @@ class ZxxkClient:
         return {"ok": True, "url": url, "items": items}
 
 
+def preview_to_paper_md(pages: list[dict], title: str = "",
+                        subject: str = "", grade: str = "") -> str:
+    """把预览页正文整理成试卷 Markdown（讲评 PPT/打印 docx 的输入）。
+
+    认三种行：大题「一、…」、题号「1. …」、选项「A. …」；其余按正文归并。
+    【答案】/【解析】行保留到参考答案节。
+    """
+    import re as _re
+    lines: list[str] = []
+    for pg in pages or []:
+        t = (pg.get("text") or "").replace("\u3000", " ")
+        lines += [x.strip() for x in t.splitlines() if x.strip()]
+
+    head, body, answers = [], [], []
+    in_ans = False
+    in_notes = False
+    pending_opt: list[str] = []
+
+    def _flush_opts():
+        nonlocal pending_opt
+        if pending_opt:
+            body.append("　".join(pending_opt))
+            pending_opt = []
+
+    for ln in lines:
+        if _re.match(r"^(参考答案|答案与解析|答案及解析|答案)\s*$", ln) or ln.startswith("【答案】"):
+            _flush_opts()
+            in_ans = True
+        if in_ans:
+            answers.append(ln)
+            continue
+        if _re.match(r"^注意事项\s*[:：]?$", ln):
+            _flush_opts()
+            in_notes = True
+            body.append("")
+            body.append("## 注意事项")
+            continue
+        if _re.match(r"^[一二三四五六七八九十]+[、．.]", ln):
+            _flush_opts()
+            in_notes = False
+            body.append("")
+            body.append("## " + ln if not ln.startswith("##") else ln)
+        elif in_notes:
+            body.append(ln)
+        elif _re.match(r"^\d{1,2}[.．、]", ln) and len(ln) > 3:
+            _flush_opts()
+            body.append("")
+            body.append(ln)
+        elif _re.match(r"^[A-DＡ-Ｄ]\s*[.．、]", ln):
+            pending_opt.append(ln)
+            if len(pending_opt) >= 4:
+                _flush_opts()
+        else:
+            _flush_opts()
+            body.append(ln)
+    _flush_opts()
+
+    title = title or "试卷"
+    # 从正文提「满分 150 分 / 用时 120 分钟」进元信息（讲评 PPT 首页要用）
+    all_text = "\n".join(lines)
+    score_m = _re.search(r"满分\s*(\d+)\s*分", all_text)
+    time_m = _re.search(r"(?:考试)?用时\s*(\d+)\s*分钟", all_text)
+    meta_bits = []
+    if subject:
+        meta_bits.append(f"学科：{subject}")
+    if grade:
+        meta_bits.append(f"年级：{grade}")
+    if time_m:
+        meta_bits.append(f"时间：{time_m.group(1)}分钟")
+    if score_m:
+        meta_bits.append(f"满分：{score_m.group(1)}")
+    meta = " | ".join(meta_bits)
+    out = [f"# {title}"]
+    if meta:
+        out.append(f"> {meta}")
+    out += head + body
+    if answers:
+        out += ["", "---", "", "## 参考答案"] + answers
+    return "\n".join(out) + "\n"
+
+
 def svg_text_legacy(svg: str) -> str:
     """Rebuild text from an SVG preview page, keeping line order.
 
