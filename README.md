@@ -28,7 +28,8 @@ Cherry Studio …）都能调。
 |---|---|---|
 | 1 | B站搜索 / 详情 / 字幕 / 音视频下载 | `bili_search` `bili_video_info` `bili_subtitle` `bili_download` `bili_audio_stream` |
 | 2 | 学科网搜索 / 版本清单 / 预览正文 / **还原 docx** / 抠图 / 组卷网搜题 | `zxxk_search` `zxxk_document` `zxxk_preview_files` `zxxk_preview_text` `zxxk_preview_docx` `zxxk_preview_images` `zxxk_questions` `zxxk_knowledge_questions` |
-| 3 | **一键讲评**（学科网资料 → docx + 讲评 PPT） | `zxxk_review_deck` |
+| 3 | **一键讲评**（学科网资料 → docx + 讲评 PPT，OCR 回填公式） | `zxxk_review_deck` |
+| 3.5 | **OCR**：预览页公式位图回填 / 任意图片转文字（水印过滤，落盘缓存） | `zxxk_preview_ocr` `jszz_ocr` |
 | 4 | 学案编写（docx，可出答案版） | `make_xuean` |
 | 5 | 学案自动生成 PPT | `make_xuean(pptx=True)` |
 | 6 | 试卷编写 / 组卷（docx，带答案页） | `make_paper_md` `assemble_paper` |

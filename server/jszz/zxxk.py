@@ -215,11 +215,13 @@ class ZxxkClient:
 
     # ---------------- preview text ----------------
     def preview_text(self, doc_id: int | str, max_pages: int = 6,
-                     version: int = 0) -> dict:
+                     version: int = 0, ocr: bool = False) -> dict:
         """读预览页正文。
 
         version: 0 起，对应 preview_files() 里的 files 顺序（如 0=原卷版, 1=解析版）。
         max_pages: 0 或负数 = 该版本**全部可预览页**（免费只有前 3–5 页，不是全本）。
+        ocr=True 时把公式/图形位图 OCR 回文字层（需 rapidocr-onnxruntime；
+        数学公式识别是「尽力而为」，比空白强但不保证符号全对）。
         """
         meta = self.preview_files(doc_id)
         if not meta.get("ok"):
@@ -243,7 +245,13 @@ class ZxxkClient:
             if r.status_code != 200:
                 pages.append({"page": i, "url": u, "text": "", "error": f"HTTP {r.status_code}"})
                 continue
-            pages.append({"page": i, "url": u, "text": svg_text(r.text)})
+            if ocr:
+                from .svg2docx import parse_svg
+                from .ocr import page_text_with_formulas
+                text = page_text_with_formulas(parse_svg(r.text))
+            else:
+                text = svg_text(r.text)
+            pages.append({"page": i, "url": u, "text": text})
         d = self.detail(doc_id)
         return {"ok": True, "document_id": int(doc_id), "title": d.get("title"),
                 "version": idx, "version_name": chosen["name"],
@@ -369,7 +377,12 @@ def preview_to_paper_md(pages: list[dict], title: str = "",
             pending_opt = []
 
     for ln in lines:
-        if _re.match(r"^(参考答案|答案与解析|答案及解析|答案)\s*$", ln) or ln.startswith("【答案】"):
+        # 页脚水印行丢掉（学科网/组卷网版权行、页码行）
+        if _re.search(r"学科网|组卷网|zxxk|zujuan|第\s*\d+\s*页\s*/\s*共", ln, _re.I):
+            continue
+        # 只有独立的「参考答案」标题行才切答案节——解析版是题干/答案/详解
+        # 逐题穿插的，【答案】行跟着题目走；曾被全局切节吞掉后面 10 道题。
+        if _re.match(r"^(参考答案|答案与解析|答案及解析)\s*$", ln):
             _flush_opts()
             in_ans = True
         if in_ans:
@@ -414,7 +427,7 @@ def preview_to_paper_md(pages: list[dict], title: str = "",
     if time_m:
         meta_bits.append(f"时间：{time_m.group(1)}分钟")
     if score_m:
-        meta_bits.append(f"满分：{score_m.group(1)}")
+        meta_bits.append(f"满分：{score_m.group(1)}分")
     meta = " | ".join(meta_bits)
     out = [f"# {title}"]
     if meta:

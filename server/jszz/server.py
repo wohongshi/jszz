@@ -269,16 +269,61 @@ def make_xuean(markdown: str, name: str = "", docx: bool = True,
 
 
 @mcp.tool()
+def jszz_ocr(image_path: str) -> dict:
+    """图片 OCR → 文字（rapidocr）。
+
+    适用：拍的书页/截图/公式位图。透明底小图会自动合成白底并放大。
+    水印（学科网/组卷网 logo）自动过滤。数学公式「尽力而为」，不保证符号全对。
+    """
+    from . import ocr as _ocr
+    if not _ocr.available():
+        return {"ok": False, "reason": "缺依赖：pip install rapidocr-onnxruntime"}
+    p = Path(image_path)
+    if not p.exists():
+        return {"ok": False, "reason": f"文件不存在：{image_path}"}
+    if p.is_dir():
+        out = {}
+        for f in sorted(p.glob("*")):
+            if f.suffix.lower() in (".png", ".jpg", ".jpeg", ".bmp", ".webp"):
+                t = _ocr.ocr_file(f)
+                if t:
+                    out[f.name] = t
+        return {"ok": True, "dir": str(p), "count": len(out), "results": out}
+    text = _ocr.ocr_file(p)
+    return {"ok": True, "path": str(p), "text": text, "chars": len(text)}
+
+
+@mcp.tool()
+def zxxk_preview_ocr(document_id: int, version: int = 0, max_pages: int = 0) -> dict:
+    """读预览页正文 + 公式位图 OCR 回填（比 zxxk_preview_text 多认出公式/符号）。
+
+    返回每页 text（公式文字已插回原行位置）。适合直接给讲评 PPT/组卷用；
+    数学公式识别不保证符号全对，正式印刷请人工核对。
+    """
+    r = _zxxk().preview_text(document_id, max_pages=max_pages, version=version,
+                             ocr=True)
+    if not r.get("ok"):
+        return r
+    return {"ok": True, "title": r.get("title"), "version": r.get("version"),
+            "version_name": r.get("version_name"), "pages": r.get("pages"),
+            "preview_total": r.get("preview_total"),
+            "ocr": True, "engine": "rapidocr"}
+
+
+@mcp.tool()
 def zxxk_review_deck(document_id: int, name: str = "", version: int = 0,
-                     max_pages: int = 0, docx: bool = True, pptx: bool = True) -> dict:
+                     max_pages: int = 0, docx: bool = True, pptx: bool = True,
+                     ocr: bool = True) -> dict:
     """一键链路：学科网资料 → 试卷 Markdown → 打印 docx + 讲评 PPT。
 
     自动读预览正文（解析版优先：version=1 有答案时并入参考答案节），
     整理成试卷 Markdown 后走 make_paper_md 同款渲染。免登录可用；
-    预览只有前 3–5 页（免费限制），要全本先 zxxk_preview_docx 下载。
+    预览只有前 3–5 页（免费限制），要全本先 zxxk_preview_docx。
+    ocr=True（默认）把公式位图 OCR 回文字——讲评不再满屏空括号。
     """
     cli = _zxxk()
-    r = cli.preview_text(document_id, max_pages=max_pages, version=version)
+    r = cli.preview_text(document_id, max_pages=max_pages, version=version,
+                         ocr=ocr)
     if not r.get("ok"):
         return {"ok": False, "reason": r.get("reason") or "预览读取失败"}
     from .zxxk import preview_to_paper_md
