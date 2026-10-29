@@ -19,7 +19,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
-from .mdparse import Block, Doc, blanks, parse
+from .mdparse import Block, Doc, blanks, parse, sec_key
 
 CN_BODY = "宋体"
 CN_HEAD = "黑体"
@@ -287,13 +287,19 @@ def new_doc(margins=(Cm(1.9), Cm(1.9), Cm(2.0), Cm(2.0))):
 
 BIG_SECTION = re.compile(r"^(课前预习案?|课内探究|当堂检测|课堂检测|课后作业|"
                          r"课后巩固案?|参考答案|答案与解析|答案及解析|答案|"
+                         r"学习目标|重点难点|考情分析|评分标准|"
                          r"课标要求|时空定位|重要概念解析|知识梳理|要点回顾|课程标准|"
                          r"素养提升|学以致用|精读教材|教考衔接|练透考法|归纳拓展|"
                          r"考情解读|考点提取|写作提升|晨诵|暮读|晚写|"
                          r"开头段|论证段|结尾段|中心论点|分论点|导语|短语背记|"
                          r"以题悟道|易错易混点|思维建模|总结提升|课后巩固区|课堂巩固区|"
                          r"目标具体分解[一二三1-3]?|方法技巧|特别提醒|知识建构|"
-                         r"核心考点|历年对照|本题特点|命题分析|命题趋势|官方答案|深化拓展)$")
+                         r"核心考点|历年对照|本题特点|命题分析|命题趋势|官方答案|深化拓展|"
+                         r"试题分析|命题立意|命题特点|思路解析|学生答题优点|存在的突出问题|"
+                         r"备考提示|原题呈现|审题指导|关键词解读|立意|行文思路|审题常见误区|"
+                         r"强基础|研考点|课时精练|必备知识|关键能力|突破题型|掌握解法|"
+                         r"高考真题|典例|解题思路|我会做|我能做对|我的反思|课堂互动区)"
+                         r"(?:[·•・].*)?$")   # 允许「强基础·教考衔接」式中点复合词
 
 
 def _heading(doc, text, level, *, center=False, size=None, rule=False, big=False,
@@ -479,7 +485,7 @@ def render_xuean(md: str, out_path: str | Path, *, school: str = "",
             _render_blocks(doc, s.blocks, answers=answers, line=1.3)
             continue
         if s.level == 2:
-            if BIG_SECTION.match(s.title):
+            if BIG_SECTION.match(sec_key(s.title)):
                 _heading(doc, s.title, 2, big=True, size=15)
             else:
                 _heading(doc, s.title, 2, center=False)
@@ -581,7 +587,7 @@ def render_paper(md: str, out_path: str | Path, *, school: str = "",
     answer_key = _collect_answer_key(d)
     in_answers = False
     for s in d.sections:
-        if re.match(r"^(参考答案|答案与解析|答案及解析|答案|解析)", s.title.strip()):
+        if re.match(r"^(参考答案|答案与解析|答案及解析|答案|解析)", sec_key(s.title)):
             in_answers = True
             if answer_page:
                 doc.add_page_break()
@@ -623,7 +629,7 @@ def _collect_answer_key(d: Doc) -> list[tuple[str, str]]:
     key: list[tuple[str, str]] = []
     in_ans = False
     for s in d.sections:
-        if re.match(r"^(参考答案|答案与解析|答案|解析)", (s.title or "").strip()):
+        if re.match(r"^(参考答案|答案与解析|答案|解析)", sec_key(s.title or "")):
             in_ans = True
             continue
         if not in_ans:

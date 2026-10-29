@@ -24,7 +24,7 @@ from pptx.oxml.ns import qn
 from pptx.util import Emu, Inches, Pt
 
 from . import subject_style as ss
-from .mdparse import Block, Doc, Section, parse
+from .mdparse import Block, Doc, Section, parse, sec_key
 
 W, H = Inches(13.333), Inches(7.5)
 FONT_CN = "微软雅黑"
@@ -1580,6 +1580,10 @@ BIG = re.compile(r"^(课前预习|课内探究|当堂检测|课堂检测|课后�
                  r"课后巩固区|课堂巩固区|目标具体分解|评分标准|方法技巧|特别提醒|"
                  r"知识建构|简记|视角|核心考点|历年对照|本题特点|命题分析|命题趋势|"
                  r"官方答案|官方解析|深化拓展|课前背记|词汇整理|句式结构|核心词块|话题微写作|"
+                 r"试题分析|命题立意|命题特点|思路解析|学生答题优点|存在的突出问题|备考提示|"
+                 r"原题呈现|审题|关键词解读|立意|行文思路|审题常见误区|"
+                 r"强基础|研考点|课时精练|必备知识|关键能力|突破题型|掌握解法|高考真题|"
+                 r"典例|解题思路|我会做|我能做对|我的反思|课堂互动区|易错清零|情境导入|"
                  r"读图观变|旁栏思考|探究·实践)")
 
 
@@ -1603,7 +1607,7 @@ def build_xuean_deck(md: str, out_path: str | Path, *, theme: str = "",
 
     for idx, sec in enumerate([x for x in d.sections if x.title], 1):
         title = _clean_heading(sec.title)
-        if re.match(r"^(参考答案|答案与解析|答案及解析|答案)$", title):
+        if re.match(r"^(参考答案|答案与解析|答案及解析|答案)$", sec_key(sec.title)):
             deck.divider(title, index=f"{idx:02d}")
             plain = [b.text.strip() for b in sec.blocks
                      if b.kind in ("num", "text", "answer", "bullet") and b.text.strip()]
@@ -1613,7 +1617,7 @@ def build_xuean_deck(md: str, out_path: str | Path, *, theme: str = "",
         is_quiz = bool(re.search(r"当堂检测|课堂检测|检测|练习|作业|自测", sec.title))
         bullets, items, tables, images, tips, scenes = _split_section(sec, quiz=is_quiz)
 
-        if BIG.match(sec.title):
+        if BIG.match(sec_key(sec.title)):
             deck.divider(title, index=f"{idx:02d}",
                          spine="导入" if "目标" in title else "")
 
@@ -1751,7 +1755,7 @@ def _group_questions(d: Doc) -> list[dict]:
 def _merge_answer_section(d: Doc, questions: list[dict]) -> None:
     """把「参考答案」栏目里的答案按题号补回题目。"""
     ans_sec = [s for s in d.sections
-               if re.match(r"^(参考答案|答案与解析|答案|解析)", (s.title or "").strip())]
+               if re.match(r"^(参考答案|答案与解析|答案|解析)", sec_key(s.title))]
     if not ans_sec:
         return
     by_num = {str(q["number"]): q for q in questions if q["number"]}

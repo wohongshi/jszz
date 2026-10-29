@@ -258,3 +258,21 @@ def blanks(text: str) -> list[tuple[str, str]]:
 
 def count_chars(text: str) -> int:
     return len(re.sub(r"\s", "", text))
+
+
+_NUM_PREFIX = re.compile(r"^(?:[一二三四五六七八九十]+[、．.]|（[一二三四五六七八九十\d]+）"
+                         r"|[（(][一二三四五六七八九十\d]+[）)]|\d+[、．.])\s*")
+
+
+def sec_key(title: str) -> str:
+    """栏目标题归一：去【】括号、去「一、/(1)/1.」序号，供栏目词表匹配。
+
+    真实资料的栏目写法五花八门（【学习目标】/一、试题分析/（一）评分标准），
+    词表匹配一律走归一后的键，别再让括号和序号把栏目拦在门外。
+    """
+    t = (title or "").strip()
+    t = re.sub(r"^[【\[]\s*", "", t)
+    t = re.sub(r"\s*[】\]]$", "", t)
+    t = re.sub(r"\s*[（(][^）)]*[）)]\s*$", "", t)   # 尾注「试题分析（命题立意）」→ 试题分析
+    t = _NUM_PREFIX.sub("", t)
+    return t.strip()
