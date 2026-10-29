@@ -412,7 +412,7 @@ class Deck:
 
     # ------------------------------------------------------------ slides
     def cover(self, title: str, subtitle: str = "", meta: str = "", tag: str = "",
-              index: str = ""):
+              hint: str | None = None, index: str = ""):
         """六种封面版式：paper / tags / aims / orbit / photo / radial（+ split 兜底）。"""
         s = self._blank()
         kind = self.s.cover
@@ -427,8 +427,10 @@ class Deck:
             self._rect(s, 0, Inches(0.5), W, Emu(12700), self.s.accent)
             tb0, tf0, p0 = self._text(s, Inches(0.62), Inches(0.08), W - Inches(1.24),
                                       Inches(0.36), size=13)
-            self._run(p0, "温馨提示：", size=13, bold=True, color=self.s.warn)
-            self._run(p0, "全体齐声朗诵，落实背诵默写", size=13, color=self.s.ink)
+            msg = "全体齐声朗诵，落实背诵默写" if hint is None else hint
+            if msg:
+                self._run(p0, "温馨提示：", size=13, bold=True, color=self.s.warn)
+                self._run(p0, msg[:30], size=13, color=self.s.ink)
             if tag:
                 tw = Inches(0.32 * len(tag) + 0.5)
                 self._rect(s, Inches(0.95), Inches(1.2), tw, Inches(0.52),
@@ -1595,9 +1597,11 @@ def _cover_index(hour: str) -> str:
 def build_xuean_deck(md: str, out_path: str | Path, *, theme: str = "",
                      school: str = "", author: str = "", subject: str = "") -> Path:
     d = parse(md)
-    subject = subject or d.meta.get("学科", "")
+    # 学科判定：显式参数 > md 元信息 > 标题正文猜测
+    subject = subject or d.meta.get("学科", "") or ss.guess(d.title or "")
     deck = Deck(theme=theme, subject=subject, footer=d.title, school=school)
-    subject, grade = d.meta.get("学科", ""), d.meta.get("年级", "")
+    subject = d.meta.get("学科", "") or (deck.s.label if deck.s.key != "general" else "")
+    grade = d.meta.get("年级", "")
     hour = d.meta.get("课时", "") if deck.s.key in ("physics", "chemistry", "biology") else ""
     if re.search(r"第\s*\d+\s*[讲节课]|^\s*\d+\s*[.．]", d.title or ""):
         hour = ""            # 标题自带编号，就不要再叠「第 NN 讲」
@@ -1659,11 +1663,15 @@ def build_paper_deck(md: str, out_path: str | Path, *, theme: str = "",
                      school: str = "", mode: str = "review", subject: str = "") -> Path:
     """试卷 → 讲评课件：每题题干页（留白给学生） + 答案解析页（视觉跟随学科）。"""
     d = parse(md)
-    subject = subject or d.meta.get("学科", "")
+    # 学科判定：显式参数 > md 元信息 > 标题正文猜测（别让物理卷戴语文口令）
+    subject = subject or d.meta.get("学科", "") or ss.guess(d.title or "")
     deck = Deck(theme=theme, subject=subject or "general", footer=d.title, school=school)
-    meta = "　".join(x for x in [d.meta.get("时间"), d.meta.get("满分")] if x)
-    deck.cover(d.title or "试卷讲评", subtitle="试卷讲评" if mode == "review" else "试卷",
-               meta=meta, tag="试卷讲评")
+    meta = "　".join(f"{k}：{v}" for k, v in
+                    [("时间", d.meta.get("时间")), ("满分", d.meta.get("满分"))] if v)
+    hint = None if deck.s.key == "chinese" else ""
+    sub = (deck.s.label if deck.s.key != "general" else "") if mode == "review" else "试卷"
+    deck.cover(d.title or "试卷讲评", subtitle=sub,
+               meta=meta, tag="试卷讲评", hint=hint)
 
     questions = _group_questions(d)
     _merge_answer_section(d, questions)

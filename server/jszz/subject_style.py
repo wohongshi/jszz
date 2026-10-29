@@ -154,6 +154,22 @@ def get(name: str | None) -> Style:
     return STYLES.get(key, STYLES["general"])
 
 
+# 六科关键词 → 风格键，用于从标题/正文猜学科（猜不出返回 ""）
+_GUESS = [
+    ("物理", "physics"), ("数学", "math"), ("英语", "english"),
+    ("化学", "chemistry"), ("生物", "biology"), ("语文", "chinese"),
+]
+
+
+def guess(*texts: str) -> str:
+    """从标题/正文里猜学科键；md 忘写 `> 学科：` 时兜底，别再让物理卷戴语文口令。"""
+    blob = " ".join(t for t in texts if t)
+    for kw, key in _GUESS:
+        if kw in blob:
+            return key
+    return ""
+
+
 # ------------------------------------------------------------------ 装饰母题
 def draw_deco(slide, s: Style) -> None:
     """按学科画角落装饰（很淡，不抢内容）。位置都避开页头文字区。"""

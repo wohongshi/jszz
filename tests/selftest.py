@@ -115,6 +115,31 @@ check(check_docx(p_docx)["ok"], "试卷 docx 体检通过")
 check(check_pptx(p_pptx)["ok"], "讲评 pptx 体检通过")
 check(check_markdown(md)["ok"] and check_markdown(md2)["ok"], "Markdown 写作体检通过")
 
+print("== 栏目识别（sec_key 回归，防【】括号漏判退化） ==")
+from jszz.mdparse import sec_key          # noqa: E402
+from jszz.pptx_render import BIG          # noqa: E402
+from jszz.docx_render import BIG_SECTION  # noqa: E402
+
+for raw, key in [
+    ("【学习目标】", "学习目标"),
+    ("一、试题分析", "试题分析"),
+    ("（一）评分标准", "评分标准"),
+    ("试题分析（命题立意）", "试题分析"),
+    ("【参考答案】", "参考答案"),
+    ("二、词性转换（每空1分，共10分）", "词性转换"),
+]:
+    check(sec_key(raw) == key, f"sec_key({raw!r}) → {key!r}")
+for raw in ["【学习目标】", "【当堂检测】", "【答案】", "一、试题分析",
+            "强基础·教考衔接", "必备知识·精读教材", "【我的反思】"]:
+    k = sec_key(raw)
+    check(bool(BIG.match(k)), f"pptx BIG 认得 {raw!r}")
+for raw in ["【参考答案】", "试题分析（命题立意）", "备考提示", "原题呈现",
+            "强基础·教考衔接", "审题常见误区", "【我的反思】"]:
+    k = sec_key(raw)
+    check(bool(BIG_SECTION.match(k)), f"docx BIG_SECTION 认得 {raw!r}")
+check(not BIG.match(sec_key("普通章节标题")), "普通标题不误判为大栏目")
+check(not BIG.match(sec_key("知识点1 匀变速")), "知识点小标题不误判为大栏目")
+
 print("== 打包完整性 ==")
 skill_zip = ROOT / "dist" / "jszz.skill"
 if skill_zip.exists():

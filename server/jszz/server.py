@@ -223,7 +223,7 @@ def zxxk_knowledge_questions(knowledge_id: str, subject_prefix: str = "gzsx",
 # ---------------------------------------------------------------- 生成
 @mcp.tool()
 def make_xuean(markdown: str, name: str = "", docx: bool = True,
-               pptx: bool = True, theme: str = "blue", answers: bool = False) -> dict:
+               pptx: bool = True, theme: str = "", answers: bool = False) -> dict:
     """学案 Markdown → 可打印 docx + 新授课 PPT（16:9）。
 
     answers=True 额外出一份「答案版」docx：{{挖空}} 红粗下划线填回答案
@@ -242,7 +242,7 @@ def make_xuean(markdown: str, name: str = "", docx: bool = True,
       ## 课后作业
       ---
       ## 参考答案
-    theme: blue / teal / violet / orange / ink
+    theme: 留空自动按 md 学科选型；也可显式 blue / teal / violet / orange / ink
     """
     md = markdown.strip()
     title = name or (re.search(r"^#\s+(.+)$", md, re.M).group(1) if re.search(r"^#\s+(.+)$", md, re.M) else "学案")
@@ -356,7 +356,7 @@ def zxxk_review_deck(document_id: int, name: str = "", version: int = 0,
 @mcp.tool()
 def make_paper_md(markdown: str, name: str = "", docx: bool = True,
                   pptx: bool = True, with_answers: bool = True,
-                  theme: str = "ink") -> dict:
+                  theme: str = "") -> dict:
     """试卷 Markdown → 可打印 docx（含参考答案页）+ 讲评 PPT。
 
     推荐结构：
