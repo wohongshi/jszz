@@ -7,7 +7,8 @@
        code 86101 未扫码 / 86090 已扫码未确认 / 86038 二维码失效 / 0 成功
   4. 成功后返回的 data.url 里带 SESSDATA / bili_jct / DedeUserID，存成 cookie 串
 
-学科网没有公开的扫码接口，WebUI 里仍用粘贴 cookie。
+学科网（zxxk）走 zxxk_qr.py：sso.zxxk.com 的微信扫码流程（WebSocket 状态通道），
+site="zxxk" 时本模块分派过去。
 """
 from __future__ import annotations
 
@@ -49,6 +50,9 @@ def _qr_png_data_url(data: str, scale: int = 6) -> str:
 
 
 def start(site: str = "bilibili") -> dict[str, Any]:
+    if site == "zxxk":
+        from . import zxxk_qr
+        return zxxk_qr.start()
     if site != "bilibili":
         return {"ok": False, "error": "该站点没有扫码接口，请粘贴 cookie"}
     try:
@@ -83,6 +87,9 @@ def _cookie_from_url(url: str) -> str:
 
 
 def poll(key: str, site: str = "bilibili") -> dict[str, Any]:
+    if site == "zxxk":
+        from . import zxxk_qr
+        return zxxk_qr.poll(key)
     if site != "bilibili":
         return {"ok": False, "error": "unsupported"}
     if not re.fullmatch(r"[0-9a-zA-Z]{16,64}", key or ""):

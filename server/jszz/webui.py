@@ -101,10 +101,23 @@ background:#fff;display:flex;align-items:center;justify-content:center;cursor:po
   <div class="card">
     <h2>学科网 / 组卷网 <span id="z-badge" class="badge">检查中</span></h2>
     <div class="hint">搜索与预览页读取免登录；下载原文件、组卷网搜题需要账号 cookie。</div>
-    <label>Cookie（zxxk.com 登录后复制整段 cookie）</label>
-    <textarea id="z-cookie" placeholder="zxxk_member_token=...; ..."></textarea>
-    <button onclick="save('zxxk')">保存 Cookie</button>
-    <button class="ghost" onclick="test('zxxk')">测试连通</button>
+    <div class="qr-wrap">
+      <div class="qr-box" id="zqr-box" onclick="startZqr()" title="点击获取二维码">
+        <div class="qr-ph">扫码登录<br>占位</div>
+      </div>
+      <div class="qr-side">
+        <div id="zqr-state" class="qr-state">尚未获取二维码</div>
+        <button onclick="startZqr()">获取二维码</button>
+        <div class="hint" style="margin-top:6px">微信扫码 → 手机上点「同意学科网登录」</div>
+      </div>
+    </div>
+    <details style="margin-top:10px" open>
+      <summary class="hint" style="cursor:pointer">或者手动粘贴 Cookie</summary>
+      <label>Cookie（zxxk.com 登录后复制整段 cookie）</label>
+      <textarea id="z-cookie" placeholder="zxxk_member_token=...; ..."></textarea>
+      <button onclick="save('zxxk')">保存 Cookie</button>
+      <button class="ghost" onclick="test('zxxk')">测试连通</button>
+    </details>
     <div class="msg" id="z-msg"></div>
   </div>
 
@@ -198,6 +211,37 @@ async function pollQr(){
     $('qr-box').innerHTML = '<div class="qr-ph">已失效<br>点击刷新</div>';
   } else {
     $('qr-state').className = 'qr-state wait'; $('qr-state').textContent = '等待扫码（3 分钟内有效）';
+  }
+}
+let zqrTimer = null, zqrKey = null;
+async function startZqr(){
+  if (zqrTimer) { clearInterval(zqrTimer); zqrTimer = null; }
+  $('zqr-state').className = 'qr-state'; $('zqr-state').textContent = '获取中…';
+  const r = await api('/api/qr/start', {site:'zxxk'});
+  if (!r.ok) { $('zqr-state').className='qr-state bad'; $('zqr-state').textContent = r.error || '获取失败'; return; }
+  zqrKey = r.key;
+  $('zqr-box').innerHTML = '<img alt="学科网登录二维码" src="' + r.qr + '">';
+  $('zqr-state').className = 'qr-state wait'; $('zqr-state').textContent = '等待扫码（3 分钟内有效）';
+  zqrTimer = setInterval(pollZqr, 2000);
+}
+async function pollZqr(){
+  if (!zqrKey) return;
+  const r = await api('/api/qr/poll', {site:'zxxk', key: zqrKey});
+  if (!r.ok) { $('zqr-state').className='qr-state bad'; $('zqr-state').textContent = r.error || '轮询失败'; return; }
+  if (r.state === 'ok') {
+    clearInterval(zqrTimer); zqrTimer = null; zqrKey = null;
+    $('zqr-box').innerHTML = '<div class="qr-ph" style="color:#16a34a">✓<br>已登录</div>';
+    $('zqr-state').className = 'qr-state ok';
+    $('zqr-state').textContent = '登录成功，cookie 已保存';
+    refresh();
+  } else if (r.state === 'scanned') {
+    $('zqr-state').className = 'qr-state wait'; $('zqr-state').textContent = r.message || '已扫码，请在手机上点确认';
+  } else if (r.state === 'expired') {
+    clearInterval(zqrTimer); zqrTimer = null;
+    $('zqr-state').className = 'qr-state bad'; $('zqr-state').textContent = r.message || '二维码已失效，点左侧重新获取';
+    $('zqr-box').innerHTML = '<div class="qr-ph">已失效<br>点击刷新</div>';
+  } else {
+    $('zqr-state').className = 'qr-state wait'; $('zqr-state').textContent = '等待扫码（3 分钟内有效）';
   }
 }
 async function save(site){
@@ -327,12 +371,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(qrlogin.start(body.get("site") or "bilibili"))
         if path == "/api/qr/poll":
             key = str(body.get("key") or "")
-            r = qrlogin.poll(key, body.get("site") or "bilibili")
-            if r.get("state") == "ok" and r.get("has_sessdata"):
-                config.write_cookie("bilibili", r["cookie"])
-                v = qrlogin.verify(r["cookie"])
-                r["verified"] = v.get("ok")
-                r["uname"] = v.get("uname")
+            site = body.get("site") or "bilibili"
+            r = qrlogin.poll(key, site)
+            if r.get("state") == "ok" and r.get("cookie"):
+                if site == "zxxk":
+                    config.write_cookie("zxxk", r["cookie"])
+                    from . import zxxk_qr
+                    v = zxxk_qr.verify(r["cookie"])
+                    r["verified"] = v.get("ok")
+                elif r.get("has_sessdata"):
+                    config.write_cookie("bilibili", r["cookie"])
+                    v = qrlogin.verify(r["cookie"])
+                    r["verified"] = v.get("ok")
+                    r["uname"] = v.get("uname")
             return self._json(r)
         if path == "/api/test":
             site = body.get("site")
