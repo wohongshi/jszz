@@ -317,14 +317,14 @@ def _render_blocks(doc, blocks, *, body_size=12, indent=0.74, line=1.5,
     for b in blocks:
         if b.kind == "text":
             p = _para(doc, "", size=body_size, first_indent=indent, line=line,
-                      space_after=2)
+                      space_after=1)
             _write_runs(p, b.text, body_size, answers=answers)
         elif b.kind == "note":
             _para(doc, b.text, size=body_size - 1.5, color=GREY, first_indent=indent,
                   line=1.3, space_after=2)
         elif b.kind in ("bullet", "num"):
             p = _para(doc, "", size=body_size, left_indent=indent + 0.6 * b.level,
-                      hanging=indent, line=line, space_after=3)
+                      hanging=indent, line=line, space_after=1)
             if b.kind == "bullet":
                 _style_run(p.add_run("▪ "), CN_BODY, EN_BODY, body_size - 1)
             _write_runs(p, b.text, body_size, answers=answers)
@@ -353,8 +353,9 @@ def _render_blocks(doc, blocks, *, body_size=12, indent=0.74, line=1.5,
                     p = cell.paragraphs[0]
                     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     p.paragraph_format.line_spacing = 1.15
-                    _style_run(p.add_run(row[ci] if ci < len(row) else ""),
-                               CN_BODY, EN_BODY, body_size - 1.5, bold=(ri == 0))
+                    # 表格里的 {{挖空}} 也要渲染成下划线/答案（曾原样显示 {{}}）
+                    _write_runs(p, row[ci] if ci < len(row) else "",
+                                body_size - 1.5, bold=(ri == 0), answers=answers)
             doc.add_paragraph().paragraph_format.space_after = Pt(2)
         elif b.kind == "image":
             path = Path(b.src)
@@ -466,11 +467,11 @@ def render_xuean(md: str, out_path: str | Path, *, school: str = "",
               space_after=6, line=1.1)
 
     if d.preface:
-        _render_blocks(doc, d.preface, answers=answers, line=1.8)
+        _render_blocks(doc, d.preface, answers=answers, line=1.3)
 
     for s in d.sections:
         if not s.title:
-            _render_blocks(doc, s.blocks, answers=answers, line=1.8)
+            _render_blocks(doc, s.blocks, answers=answers, line=1.3)
             continue
         if s.level == 2:
             if BIG_SECTION.match(s.title):
@@ -483,7 +484,7 @@ def render_xuean(md: str, out_path: str | Path, *, school: str = "",
                 _heading(doc, s.title, 3, color=RGBColor(0x00, 0x00, 0xC0))
             else:
                 _heading(doc, s.title, 3)
-        _render_blocks(doc, s.blocks, answers=answers, line=1.8)
+        _render_blocks(doc, s.blocks, answers=answers, line=1.3)
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
