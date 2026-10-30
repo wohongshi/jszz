@@ -37,14 +37,23 @@ def available() -> bool:
 
 
 def _prep(im, scale: int = 2):
-    """RGBA 合成白底；小图放大 scale 倍（公式位图多为透明底细线小图）。"""
+    """RGBA 合成白底；小图放大 scale 倍（公式位图多为透明底细线小图）；超大图缩到 1600px 内。
+
+    坑 1：P 模式（PNG-8/GIF）的透明区直接 convert('RGB') 会变黑底——OCR 全瞎。
+    坑 2：超大图不缩会把 ONNX 推理拖到几十秒（发热大户），必须先降采样。
+    """
     from PIL import Image
+    if im.mode == "P":
+        im = im.convert("RGBA")        # 带透明的调色板图先展开，保住 alpha
     if im.mode in ("RGBA", "LA"):
         bg = Image.new("RGB", im.size, "white")
         bg.paste(im, mask=im.split()[-1])
         im = bg
     elif im.mode != "RGB":
         im = im.convert("RGB")
+    if max(im.size) > 1600:
+        r = 1600 / max(im.size)
+        im = im.resize((max(1, int(im.width * r)), max(1, int(im.height * r))), 1)
     if max(im.size) < 260:
         im = im.resize((im.width * scale, im.height * scale), 1)  # LANCZOS
     return im
@@ -82,8 +91,11 @@ def ocr_bytes(data: bytes, *, use_cache: bool = True) -> str:
         except Exception:
             return ""
     text = " ".join(t for _, t, _ in (res or [])).strip()
-    if not text or WATERMARK_RE.search(text):
-        text = ""
+    if text:
+        # 水印过滤：图里常是「公式/图形 + 水印 logo」混排——剔掉水印片段保住正文，
+        # 只有整段都是水印才丢（此前 search 命中就整段清空，公式全陪葬——误杀）
+        kept = [seg for seg in re.split(r"\s+", text) if seg and not WATERMARK_RE.search(seg)]
+        text = " ".join(kept).strip()
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
         cache_file.write_text(text, "utf-8")

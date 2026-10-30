@@ -48,14 +48,14 @@ d.text((x + tw + 28 * S, 128 * S), sub, font=F(SERIF, fs), fill=(150, 170, 200))
 
 d.text((x, 205 * S), "B站音视频 · 学科网取材 · 学案/试卷/课件生成",
        font=f_sub, fill=(200, 210, 225))
-d.text((x, 242 * S), "六科真实课件视觉 · 公式 OCR · 一键讲评",
+d.text((x, 242 * S), "九科真实课件视觉 · 公式 OCR · 一键讲评",
        font=f_sub, fill=(200, 210, 225))
 d.text((x, 285 * S), "837 份真实教师资料逆向出的排版规范 · 22 个 MCP 工具 · 10 篇写作规范",
        font=f_small, fill=(120, 140, 170))
 d.text((x, 318 * S), "MIT License · python 3.10+ · 一条命令起服务",
        font=f_small, fill=(100, 120, 150))
 
-# 右侧：六科真实封面圆片（轻微重叠，右移缩小，不压文字）
+# 右侧：九科真实封面圆片（轻微重叠，右移缩小，不压文字）
 covers = sorted(glob.glob("docs/shots/subjects/*.png"))
 if covers:
     n = min(6, len(covers))

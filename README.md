@@ -12,9 +12,10 @@
 <p align="center">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB">
   <img alt="MCP tools" src="https://img.shields.io/badge/MCP%20tools-22-2E86D6">
-  <img alt="排版规范" src="https://img.shields.io/badge/排版规范-10%20篇-E8710A">
-  <img alt="样例" src="https://img.shields.io/badge/样例-9%20份-70AD47">
-  <img alt="栏目词表" src="https://img.shields.io/badge/栏目词表-112%20词-8B5CF6">
+  <img alt="排版规范" src="https://img.shields.io/badge/排版规范-11%20篇-E8710A">
+  <img alt="样例" src="https://img.shields.io/badge/样例-11%20份-70AD47">
+  <img alt="学科视觉" src="https://img.shields.io/badge/学科视觉-9%20科-0F9D58">
+  <img alt="栏目词表" src="https://img.shields.io/badge/栏目词表-150%20词-8B5CF6">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-yellow">
 </p>
 
@@ -28,13 +29,13 @@
 
 | 层 | 负责 | 换掉它意味着 |
 |---|---|---|
-| **素材获取** | B站搜/字幕/音视频下载；学科网搜资料、读预览、**还原可编辑 docx**、微信扫码登录 | 手动翻网页、手抄题目 |
-| **文档生成** | 学案/试卷 → 可打印 A4 docx；课件 → 16:9 PPT（六科各一套视觉） | 一晚上手动排版 |
-| **版式与写作** | 从真实资料逆向的字体/字号/栏目词表/配色/答题语言（含评分边界、课堂口癖） | 「差不多就行」的 AI 排版 |
+| **素材获取** | B站搜/字幕/音视频下载；学科网搜资料、读预览、**还原可编辑 docx**、微信扫码登录；网络找图 | 手动翻网页、手抄题目 |
+| **文档生成** | 学案/试卷 → 可打印 A4 docx；课件 → 16:9 PPT（九科各一套视觉） | 一晚上手动排版 |
+| **版式与写作** | 从真实资料逆向的字体/字号/栏目词表/配色/答题语言（含评分边界、课堂口癖、图注句式） | 「差不多就行」的 AI 排版 |
 
 ## 长什么样
 
-| WebUI 控制台（B站/学科网扫码登录） | 六科课件封面（真实渲染） |
+| WebUI 控制台（B站/学科网扫码登录） | 九科课件封面（真实渲染） |
 |---|---|
 | <img src="docs/shots/webui.png" width="420"> | <img src="docs/shots/subjects-covers.png" width="420"> |
 
@@ -42,20 +43,23 @@
 |---|---|
 | <img src="docs/shots/sample_xuean_p-1.png" width="205"> | <img src="docs/shots/sample_paper_p-1.png" width="205"> |
 
-| 六科专属页型 | 讲评课件（答案红色 + 解析） |
+| 九科专属页型 | 讲评课件（答案红色 + 解析） |
 |---|---|
 | <img src="docs/shots/subjects-scenes.png" width="420"> | <img src="docs/shots/ppt_paper-10.png" width="420"> |
 
 ## ✨ 亮点
 
-- 🎯 **规范从真实资料来**——793 个文件全量抽取（788 成功、405 万字），6 片并行深读 479 份：
-  栏目词表 112 词、题源标注粒度、评分负面边界、课堂运营口癖，见
-  [`docs/全库深读发现.md`](docs/全库深读发现.md)
+- 🎯 **规范从真实资料来**——793 个文件全量抽取（788 成功、405 万字），6 片并行深读 479 份 +
+  130 份 Word 全读：栏目词表 150 词、题源标注粒度、评分负面边界、课堂运营口癖、图注句式，见
+  [`docs/全库深读发现.md`](docs/全库深读发现.md)、[`docs/Word深读发现.md`](docs/Word深读发现.md)
 - 📝 **写出来像真老师写的**——评分表有「不得分」边界、题源溯到教材页码
   （`来源：人教A版必修第二册P202例3`）、限时口令（`做题留痕，红笔改错`），不是 AI 教辅味
 - 📄 **学案带答案版**——`make_xuean(answers=True)`：答案红色压下划线填回，与老师手写答案版同款
-- 🖼️ **六科各一套 PPT 视觉**——封面/页头/装饰/专属页型都不同，按 `> 学科：` 自动选型
+- 🖼️ **九科各一套 PPT 视觉**——封面/页头/装饰/专属页型都不同，按 `> 学科：` 自动选型
   （忘写学科也会从标题猜，不再出现物理卷戴语文口令）
+- 🖼️ **网络找图 + 真实图注句式**——`tools/webimg.py` 搜图下载（必应/Wikimedia），
+  图注照真实资料写（`图N示意…（单位：m）`、一文多图用「图N所示」精确指代），
+  见 [`skill/references/11-图片引用.md`](skill/references/11-图片引用.md)
 - 📊 **阅卷分析五段式**——试题分析→评分标准→答题优点→突出问题→备考提示，试卷讲评直接出
 - 🔍 **公式 OCR 回填**——学科网预览的公式是位图，OCR 插回原行位置，讲评不再满屏空括号
 - 🚀 **一键讲评**——`zxxk_review_deck(document_id)`：学科网资料 → 打印卷 + 讲评 PPT 一步到位
@@ -72,14 +76,16 @@ flowchart LR
     B --> F["ocr.py<br>公式位图回填 rapidocr"]
     B --> G["webui.py<br>本地控制台 :8770"]
     E --> H["A4 docx + 16:9 PPTX"]
+    I["webimg.py<br>网络找图 + 浏览器兜底"] --> E
 ```
 
 ```
-server/jszz/    22 个 MCP 工具 + 渲染器 + WebUI（6322 行）
-skill/          SKILL.md + 10 篇排版规范（打包成 dist/jszz.skill）
-examples/       9 份学科样例 + 学案/试卷示例 Markdown
-tests/          3 套测试（离线渲染+栏目回归 / MCP 端到端 / 学科网预览）
-docs/           语料分析 · 全库深读发现 · 六科内容地图 · 截图
+server/jszz/    22 个 MCP 工具 + 渲染器 + WebUI（6673 行）
+skill/          SKILL.md + 11 篇排版规范（打包成 dist/jszz.skill）
+examples/       11 份学科样例（九科 + 2 份变体）+ 学案/试卷示例 Markdown
+tools/          webimg 找图（浏览器兜底）· asset_lib 素材索引 · shots_covers · readme_numbers
+tests/          3 套测试（离线渲染+回归 / MCP 端到端 / 学科网预览）
+docs/           语料分析 · 全库深读发现 · Word深读发现 · 六科内容地图 · 截图
 ```
 
 ## 安装
@@ -95,7 +101,7 @@ pip install yt-dlp && sudo apt install ffmpeg   # 可选：下载 B 站音视频
 > 不想装成包也行：`pip install -r requirements.txt`，把命令里的 `jszz` 换成
 > `python -m jszz.cli`，`PYTHONPATH` 指向 `server/`。
 
-也可以直接装技能包 [`dist/jszz.skill`](dist/jszz.skill)（SKILL.md + 10 篇规范），
+也可以直接装技能包 [`dist/jszz.skill`](dist/jszz.skill)（SKILL.md + 11 篇规范），
 让 Agent 按真实资料的写作规律出稿。
 
 ## 接入 MCP
@@ -144,8 +150,12 @@ jszz search "匀变速直线运动" --limit 5
 jszz xuean examples/xuean-wuli.md --answers   # → docx + 答案版 + pptx（学科自动选型）
 jszz paper examples/paper-wuli.md             # → docx + 讲评 pptx
 
-# 2. 在 Agent 里
-#    "用 jszz 出一份《匀变速直线运动》第1课时的学案和课件"
+# 2. 网络找图（HTTP 被挡自动切浏览器兜底）
+python3 tools/webimg.py search "热力环流示意图" --count 6
+python3 tools/webimg.py download "<图URL>" --title "…" --query "…"
+
+# 3. 在 Agent 里
+#    "用 jszz 出一份《匀变速直线运动》第1课时的学案和课件，配两张示意图"
 #    "从学科网找 3 道动量守恒的题，组一份 100 分的小卷"
 #    "把这个学科网卷子直接出成讲评 PPT"
 ```
@@ -157,12 +167,13 @@ jszz paper examples/paper-wuli.md             # → docx + 讲评 pptx
 | 1 | B站搜索 / 详情 / 字幕 / 音视频下载 | `bili_search` `bili_video_info` `bili_subtitle` `bili_download` `bili_audio_stream` |
 | 2 | 学科网搜索 / 版本清单 / 预览正文 / **还原 docx** / 抠图 / 组卷网搜题 | `zxxk_search` `zxxk_document` `zxxk_preview_files` `zxxk_preview_text` `zxxk_preview_docx` `zxxk_preview_images` `zxxk_questions` `zxxk_knowledge_questions` |
 | 3 | **一键讲评**（学科网资料 → docx + 讲评 PPT） | `zxxk_review_deck` |
-| 4 | **OCR**：预览页公式回填 / 任意图片转文字（水印过滤、落盘缓存） | `zxxk_preview_ocr` `jszz_ocr` |
+| 4 | **OCR**：预览页公式回填 / 任意图片转文字（水印剔除、落盘缓存） | `zxxk_preview_ocr` `jszz_ocr` |
 | 5 | 学案编写（docx，可出答案版） | `make_xuean` |
-| 6 | 学案自动生成 PPT（六科视觉，学科自动选型） | `make_xuean(pptx=True)` |
+| 6 | 学案自动生成 PPT（九科视觉，学科自动选型） | `make_xuean(pptx=True)` |
 | 7 | 试卷编写 / 组卷（docx，带答案页） | `make_paper_md` `assemble_paper` |
 | 8 | 试卷转讲评 PPT（跟随学科风格） | `make_paper_md(pptx=True)` |
-| 9 | 产出体检 / 状态 / 配置 | `lint_markdown` `jszz_status` `jszz_configure` |
+| 9 | 网络找图（必应/Wikimedia，浏览器兜底，来源入库） | `tools/webimg.py` |
+| 10 | 产出体检 / 状态 / 配置 | `lint_markdown` `jszz_status` `jszz_configure` |
 
 ## 排版规范怎么来的
 
@@ -172,11 +183,12 @@ jszz paper examples/paper-wuli.md             # → docx + 讲评 pptx
 |---|---|---|
 | 全量语料统计 | 837 个文件、892 万字符 | 字号/栏目/结构骨架 → [`docs/corpus-analysis.md`](docs/corpus-analysis.md) |
 | **793 份全量抽取 + 479 份逐份深读** | 405 万字，6 片并行 | 写作规律/评分边界/口癖 → [`docs/全库深读发现.md`](docs/全库深读发现.md) |
-| 课件逐页目视 + XML | 17 份真实课件（每科 2–3 份） | 六科 PPT 视觉语言 → `references/09` |
+| **130 份 Word 全量深读** | 历史 34 份 106 条 + 政史地 PPT 补证 | 九科写作规范 → [`docs/Word深读发现.md`](docs/Word深读发现.md) |
+| 课件逐页目视 + vision 读图 + PIL 色值复核 | 25+ 份真实课件（含政史地内页） | 九科 PPT 视觉语言 → `references/09` |
 | 学案/试卷 run 级样式 | 11 份 docx（含真实答案版对比） | 答案版/页眉/选项排布 → `references/10` |
-| 内容骨架 | 100+ 份真实学案/课件 | 六科学案模板 → `references/07` |
+| 图注引用统计 | 405 万字全库 | 图注句式/指代词/组题锚点 → `references/11` |
 
-<details><summary>六科样例与专属页型（点击展开）</summary>
+<details><summary>九科样例与专属页型（点击展开）</summary>
 
 | 学科 | 封面 | 专属页型 | 触发指令 |
 |---|---|---|---|
@@ -186,6 +198,10 @@ jszz paper examples/paper-wuli.md             # → docx + 讲评 pptx
 | 物理 | 深蓝轨道弧线 + 页码方块 | 公式页 | 同数学 |
 | 化学 | 试管卡片 + 蓝胶囊页头 | 反应式页 | `> 反应：… \| 条件：…` |
 | 生物 | 绿块栏目 + 放射概念图 | 概念图页 | `> 概念：中心词 > 分支：…` |
+| 政治 | 红竖条 + 政务蓝 + 金线 | 时政材料页 | `> 材料：… \| 设问：…` |
+| 历史 | 宣纸卷轴 + 朱红印章 | 史料页 | `> 史料：…——摘编自…` |
+| 历史/政治 | （同上） | 答题模板页 | `> 模板：答题模式：… \| 标签：××` |
+| 地理 | 斜切云天 + 深蓝底带 | 图表页 | `> 图表：… \| 判读：…` |
 
 </details>
 
@@ -214,14 +230,22 @@ jszz paper examples/paper-wuli.md             # → docx + 讲评 pptx
 **WAF 用页面自己的 JS 解。** 学科网/组卷网在阿里云 WAF 后面，本工具用 Node `vm`
 跑页面脚本算 cookie，不引浏览器、不装 Playwright。
 
+**网络找图带完整浏览器兜底。** HTTP 抓图被反爬时自动切 chromedriver 真浏览器：
+搜索走 DOM 解析，下载走页面上下文 fetch（自带 Referer/Cookie，防盗链可破）。
+坑：目标站把 http 重定向到 https 后，页面内再 fetch `http://…` 会被 Chrome 按
+混合内容拦掉——必须用同源相对路径取图。
+
 **栏目标题先归一再匹配。** 真实资料的栏目写法五花八门（`【学习目标】`/`一、试题分析`），
-`mdparse.sec_key()` 统一剥掉括号序号再对 112 词词表，别让格式把栏目拦在门外。
+`mdparse.sec_key()` 统一剥掉括号序号再对 150 词词表，别让格式把栏目拦在门外。
 
 **学科自动选型。** md 写 `> 学科：物理` 最准；忘写了会从标题猜（`ss.guess()`），
 显式 `--theme` 才覆盖——不再出现物理卷戴语文早读口令。
 
-**三色分工从真实课件拆出。** 红=答案/纠错/易错（六科通吃），蓝=标题/要点/解析，
+**三色分工从真实课件拆出。** 红=答案/纠错/易错（九科通吃），蓝=标题/要点/解析，
 黄=高亮标签。满屏红等于没有红。
+
+**OCR 三防。** P 模式透明底先转 RGBA 合白底（直接转 RGB 透明区变黑、OCR 全瞎）；
+水印只剔片段不整段丢（公式+水印混排曾整图陪葬）；超大图先降到 1600px（ONNX 发热大户）。
 
 **产出体检。** `lint_markdown` 查写作层（挖空配对、大题分值、选项写法），
 `jszz check` 查文件层（形状越界、文本框溢出、占位符残留、空白页、表格超宽）。
@@ -231,7 +255,7 @@ jszz paper examples/paper-wuli.md             # → docx + 讲评 pptx
 ## 测试
 
 ```bash
-./tests/selftest.py          # 离线渲染自检（docx/pptx 版式断言 + 栏目识别回归）
+./tests/selftest.py          # 离线渲染自检（docx/pptx 断言 + 栏目/图片/OCR 回归）
 ./tests/test_mcp.py          # MCP stdio 端到端（22 工具注册 + 生成链路）
 ./tests/test_zxxk_preview.py # 学科网预览接口（需网络）
 ```
@@ -244,6 +268,8 @@ jszz paper examples/paper-wuli.md             # → docx + 讲评 pptx
   「尽力而为」，符号不保证全对，印刷前人工核对
 - 学科网**免费预览只有 3–5 页**，全本要下载原件（需要账号点数，本工具不绕过付费）
 - 组卷网（zujuan）反爬强，机房 IP 常被直接阻断；学校/家庭宽带一般可用
+- **网络找图版权**：必应搜出的图多为教辅站转载，内部教学使用标注「来源：网络」；
+  公开出版物请用 Wikimedia（CC 授权、自带作者信息）或自行取得授权
 - 下载 B 站视频依赖 `yt-dlp`，其接口随 B 站改动，升级 `yt-dlp` 即可
 - 语文/数学/英语的学案写作样本以课件与试卷为主，学案 docx 样本偏历史/化学/生物
 
@@ -255,9 +281,10 @@ jszz paper examples/paper-wuli.md             # → docx + 讲评 pptx
 |---|---|
 | [`docs/corpus-analysis.md`](docs/corpus-analysis.md) | 837 份语料的统计报告（数字出处） |
 | [`docs/全库深读发现.md`](docs/全库深读发现.md) | 479 份深读的写作规律与栏目词表（405 万字） |
+| [`docs/Word深读发现.md`](docs/Word深读发现.md) | 130 份 Word 全量深读（历史 34 份写作规律 + 政地缺口声明） |
 | [`docs/六科内容地图.md`](docs/六科内容地图.md) | 六科内容骨架与教法 |
 | [`skill/SKILL.md`](skill/SKILL.md) | 给 AI Agent 的完整使用说明 |
-| `skill/references/01–10` | 学案/试卷/课件/Markdown/学科网/B站/模板/视觉/取证规范 |
+| `skill/references/01–11` | 学案/试卷/课件/Markdown/学科网/B站/模板/视觉/取证/图片引用规范 |
 
 ## License
 

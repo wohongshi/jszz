@@ -140,6 +140,119 @@ for raw in ["【参考答案】", "试题分析（命题立意）", "备考提�
 check(not BIG.match(sec_key("普通章节标题")), "普通标题不误判为大栏目")
 check(not BIG.match(sec_key("知识点1 匀变速")), "知识点小标题不误判为大栏目")
 
+print("== 九科视觉（语数英物化生政史地）==")
+from jszz import subject_style as ss  # noqa: E402
+
+NINE = [("语文", "chinese"), ("数学", "math"), ("英语", "english"),
+        ("物理", "physics"), ("化学", "chemistry"), ("生物", "biology"),
+        ("政治", "politics"), ("历史", "history"), ("地理", "geography")]
+for name, key in NINE:
+    st = ss.get(name)
+    check(st.key == key, f"学科 {name} → {key} 风格")
+    check(bool(st.cover) and bool(st.header) and bool(st.deco),
+          f"{name} 有封面/页头/装饰（{st.cover}/{st.header}/{st.deco}）")
+for name, key in NINE:
+    check(ss.guess(f"胶州四中{name}学案") == key, f"标题猜学科：{name}")
+check(ss.guess("一轮复习纲要上第11课") == "history", "历史标题猜中（旧版漏判）")
+check(ss.guess("专题11 热力环流") == "geography", "地理标题猜中")
+check(ss.guess("复习必修四第二单元") == "politics", "政治标题猜中")
+# 九科封面/页头互不重样（防三科套同一套皮）
+covers = {ss.get(n).cover for n, _ in NINE}
+headers = {ss.get(n).header for n, _ in NINE}
+check(len(covers) == 9, f"九科封面版式不重样（{len(covers)}）")
+check(len(headers) == 9, f"九科页头不重样（{len(headers)}）")
+
+print("== scene 指令（含政史地四新页型）==")
+from jszz.mdparse import parse as _parse  # noqa: E402
+
+_d = _parse("""# t
+> 史料：材料。——摘编自《史》
+> 材料：时政。| 设问：问题？
+> 图表：图例 | 判读：①甲；②乙
+> 模板：答题模式：标题 + 表述成文 | 标题：×× | 时代背景：××
+## s
+body
+""")
+_scenes = [b.meta.get("scene") for b in _d.preface if b.kind == "scene"]
+check(_scenes == ["史料", "材料", "图表", "模板"], f"四种 scene 解析：{_scenes}")
+_d2 = _parse("# t\n\n## s\n> 引文：x——y\n")
+check([b.meta.get("scene") for b in _d2.sections[0].blocks if b.kind == "scene"] == ["引文"],
+      "旧五种 scene 不回归")
+# **关键词** 红粗渲染（史轮2-24 取证）
+from jszz.mdparse import blanks as _blanks  # noqa: E402
+_b = _blanks("打破坊市制度，**商业活动不再受时空限制**，{{纸币}}出现")
+check(("strong", "商业活动不再受时空限制") in _b and ("blank", "纸币") in _b,
+      "**关键词**与{{挖空}}双语法共存")
+
+print("== 图片引用（图注句式 + 嵌图）==")
+from PIL import Image as _Image  # noqa: E402
+_img = OUT / "fig-test.png"
+_Image.new("RGB", (240, 160), (70, 130, 180)).save(_img)
+_md_img = f"""# t
+> 学科：地理
+
+## s
+
+![图1示意热力环流的常见类型（单位：hPa）]({_img})
+
+1. 据图1所示，判断（　　）
+"""
+from jszz.pptx_render import build_xuean_deck as _bud  # noqa: E402
+from jszz.docx_render import render_xuean as _rxd  # noqa: E402
+_p2 = _bud(_md_img, OUT / "fig-test.pptx", school="测试中学")
+_d2 = _rxd(_md_img, OUT / "fig-test.docx", school="测试中学")
+from pptx import Presentation as _P2  # noqa: E402
+_sl = list(_P2(str(_p2)).slides)
+check(any(sh.shape_type == 13 for s2 in _sl for sh in s2.shapes), "pptx 嵌入图片")
+check(any(sh.has_text_frame and sh.text_frame.text.startswith("图1示意")
+          for s2 in _sl for sh in s2.shapes), "pptx 图注（图N示意句式）")
+from docx import Document as _D2  # noqa: E402
+_dd = _D2(str(_d2))
+check(len(_dd.inline_shapes) == 1, "docx 嵌入图片")
+check("图1示意" in "\n".join(pp.text for pp in _dd.paragraphs), "docx 图注")
+
+print("== OCR 三修回归（假引擎，不起 ONNX）==")
+import hashlib as _hashlib  # noqa: E402
+import io as _io  # noqa: E402
+from PIL import Image as _Im, ImageDraw as _ID  # noqa: E402
+from jszz import ocr as _ocr  # noqa: E402
+
+def _fake(text):
+    def _c(*a, **k):
+        return ([[[[0, 0], [10, 0], [10, 10], [0, 10]], text, 0.9]], None)
+    return _c
+
+def _png_bytes(w=60, h=30):
+    b = _io.BytesIO()
+    im = _Im.new("RGB", (w, h), "white")
+    _ID.Draw(im).line([(5, h // 2), (w - 5, h // 2)], fill="black")
+    im.save(b, format="PNG")
+    return b.getvalue()
+
+# 修1：P 模式透明底 → 白底（曾变黑底 OCR 全瞎）
+_rgba = _Im.new("RGBA", (40, 20), (0, 0, 0, 0))
+_ID.Draw(_rgba).line([(5, 10), (35, 10)], fill=(0, 0, 0, 255))
+_prep_out = _ocr._prep(_rgba.convert("P", palette=_Im.ADAPTIVE))
+check(_prep_out.getpixel((2, 2)) == (255, 255, 255), "OCR：P 模式透明区→白底")
+# 修3：超大图降采样（曾拖 ONNX 发热）
+check(max(_ocr._prep(_Im.new("RGB", (4000, 3000), "white")).size) <= 1600,
+      "OCR：超大图降采样 ≤1600")
+# 修2：水印片段剔除不陪葬正文（曾整段清空）
+_cache = (Path.home() / ".jszz" / "cache" / "ocr")
+_cache.mkdir(parents=True, exist_ok=True)
+def _ocr_once(blob, fake_text):
+    _ocr._ENGINE = _fake(fake_text)
+    cf = _cache / (_hashlib.sha1(blob).hexdigest() + ".txt")
+    if cf.exists():
+        cf.unlink()
+    return _ocr.ocr_bytes(blob)
+check(_ocr_once(_png_bytes(), "v=v0+at 学科网") == "v=v0+at",
+      "OCR：水印片段剔除、公式保住")
+check(_ocr_once(_png_bytes(61), "学科网 www.zxxk.com") == "",
+      "OCR：纯水印图返回空")
+check(_ocr_once(_png_bytes(62), "x^2+y^2=r^2") == "x^2+y^2=r^2",
+      "OCR：无水印原样保留")
+
 print("== 打包完整性 ==")
 skill_zip = ROOT / "dist" / "jszz.skill"
 if skill_zip.exists():

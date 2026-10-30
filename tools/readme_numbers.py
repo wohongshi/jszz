@@ -5,10 +5,13 @@
 每个数字都从代码/语料实数，不许手填。
 """
 import re
+import sys
 import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "server"))
+from jszz import subject_style as ss  # noqa: E402
 
 
 def mcp_tools() -> list[str]:
@@ -36,6 +39,7 @@ def main() -> None:
 
     print(f"MCP 工具        {len(tools)}")
     print(f"  {', '.join(tools)}")
+    print(f"学科风格        {len(ss.STYLES) - 1} 科（不含 general 兜底）")
     print(f"排版规范        {len(refs)} 篇")
     print(f"样例            {len(samples)} 份")
     print(f"服务端代码      {py_lines} 行（server/jszz/*.py）")

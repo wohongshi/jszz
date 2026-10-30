@@ -177,10 +177,10 @@ class Deck:
         return p
 
     def _rich(self, p, text: str, *, size: int, color=None, bold=False):
-        """【…】→警示红加粗；{{…}}→下划线空格；其余正文色。"""
+        """【…】→警示红加粗；{{…}}→下划线空格；**…**→红粗关键词；其余正文色。"""
         color = color or self.t.ink
         text = _nb(text)
-        for part in re.split(r"(【[^】]{1,16}】|\{\{[^}]*\}\})", text):
+        for part in re.split(r"(【[^】]{1,16}】|\{\{[^}]*\}\}|\*\*[^*]+\*\*)", text):
             if not part:
                 continue
             if part.startswith("【") and part.endswith("】"):
@@ -189,6 +189,9 @@ class Deck:
                 inner = part[2:-2].strip()
                 self._run(p, "\u3000" * max(2, min(10, len(inner) + 1)),
                           size=size, color=color, underline=True)
+            elif part.startswith("**") and part.endswith("**"):
+                # **关键词**：真实资料的红粗强调（得分点，史轮2-24 取证）
+                self._run(p, part[2:-2], size=size, bold=True, color=self.t.warn)
             else:
                 self._run(p, part, size=size, color=color, bold=bold)
 
@@ -349,6 +352,60 @@ class Deck:
                                           Inches(0.52), kw, Inches(0.38), size=12,
                                           align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
                 self._run(p2, kicker, size=12, bold=True, color=_rgb("8A6D1B"))
+            return
+
+        if kind == "scrollbar":
+            # 历史：宣纸横条 + 竖排卷轴条 + 宋体栏目名（史主2/史轮2 取证）
+            self._rect(slide, 0, 0, W, Inches(0.62), self.s.light)
+            self._rect(slide, 0, Inches(0.62), W, Emu(11430), self.s.main)
+            self._rect(slide, Inches(0.5), Inches(0.06), Inches(0.16), Inches(0.5),
+                       self.s.main)
+            tb, tf, p = self._text(slide, Inches(0.85), Inches(0.06), W - Inches(3.4),
+                                   Inches(0.5), size=size, anchor=MSO_ANCHOR.MIDDLE)
+            self._rich(p, title, size=size, color=self.s.ink, bold=True)
+            if kicker and kicker.strip() != title.strip():
+                tb2, tf2, p2 = self._text(slide, W - Inches(3.3), Inches(0.1),
+                                          Inches(2.7), Inches(0.42), size=13,
+                                          align=PP_ALIGN.RIGHT)
+                self._run(p2, kicker, size=13, bold=True, color=self.s.gold)
+            return
+
+        if kind == "skyline":
+            # 地理：深蓝左块栏目名 + 右上斜切三角（地课2 封面取证）
+            tw = Inches(0.33 * len(title) + 0.8)
+            self._rect(slide, 0, 0, min(tw, W - Inches(4.2)), Inches(0.72), self.s.main)
+            tb, tf, p = self._text(slide, Inches(0.34), Inches(0.05),
+                                   min(tw, W - Inches(4.2)) - Inches(0.4), Inches(0.62),
+                                   size=min(size, 24), anchor=MSO_ANCHOR.MIDDLE)
+            self._run(p, title, size=min(size, 24), bold=True, color=self.s.white)
+            tri = slide.shapes.add_shape(MSO_SHAPE.RIGHT_TRIANGLE,
+                                         W - Inches(2.3), 0, Inches(2.3), Inches(0.72))
+            tri.fill.solid()
+            tri.fill.fore_color.rgb = self.s.accent
+            tri.line.fill.background()
+            tri.shadow.inherit = False
+            if kicker and kicker.strip() != title.strip():
+                kw = Inches(0.18 * len(kicker) + 0.5)
+                self._rect(slide, min(tw, W - Inches(4.2)) + Inches(0.24), Inches(0.14),
+                           kw, Inches(0.42), self.s.gold,
+                           shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+                tb2, tf2, p2 = self._text(slide, min(tw, W - Inches(4.2)) + Inches(0.24),
+                                          Inches(0.16), kw, Inches(0.38), size=12,
+                                          align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p2, kicker, size=12, bold=True, color=self.s.white)
+            return
+
+        if kind == "redbar":
+            # 政治：红粗竖条 + 栏目名 + 蓝细线（党政红蓝配色取证）
+            self._rect(slide, Inches(0.55), Inches(0.34), Inches(0.14), Inches(0.74),
+                       self.s.main)
+            tb, tf, p = self._text(slide, Inches(0.88), Inches(0.34), W - Inches(3.6),
+                                   Inches(0.74), size=size, anchor=MSO_ANCHOR.MIDDLE)
+            self._rich(p, title, size=size, color=self.s.ink, bold=True)
+            self._rect(slide, Inches(0.88), Inches(1.14), W - Inches(1.2), Emu(9525),
+                       self.s.accent)
+            if kicker and kicker.strip() != title.strip():
+                self._chip(slide, kicker, y=Inches(0.48))
             return
 
         # nav（物理/通用）：标题左 + 红「标签」行 + 细分隔线（真实物理课件页头）
@@ -636,6 +693,105 @@ class Deck:
                                           anchor=MSO_ANCHOR.MIDDLE)
                 self._run(p4, tag, size=13, bold=True, color=self.s.main)
 
+        elif kind == "scroll":
+            # 历史：宣纸底 + 卷轴竖条 + 居中墨字标题 + 朱红印章（史主2/史轮2 取证）
+            self._rect(s, 0, 0, W, H, self.s.light)
+            ss.draw_deco(s, self.s)
+            for x in (Inches(0.55), W - Inches(0.75)):
+                self._rect(s, x, 0, Inches(0.2), H, self.s.main)
+            if tag:
+                tw = Inches(0.32 * len(tag) + 0.5)
+                self._rect(s, (W - tw) / 2, Inches(1.0), tw, Inches(0.46),
+                           self.s.main, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.18)
+                tb1, tf1, p1 = self._text(s, (W - tw) / 2, Inches(1.03), tw, Inches(0.4),
+                                          size=14, align=PP_ALIGN.CENTER,
+                                          anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p1, tag, size=14, bold=True, color=self.s.light)
+            tb, tf, p = self._text(s, Inches(1.6), Inches(1.95), W - Inches(3.2),
+                                   Inches(2.2), size=tsize, align=PP_ALIGN.CENTER,
+                                   line_spacing=1.24)
+            for i, line in enumerate(title.split("\v")):
+                if i:
+                    p.add_line_break()
+                self._run(p, line, size=tsize, bold=True, color=self.s.ink,
+                          cn=self.s.font_head)
+            self._rect(s, (W - Inches(1.6)) / 2, Inches(4.35), Inches(1.6), Emu(28575),
+                       self.s.gold)
+            if subtitle:
+                tb2, tf2, p2 = self._text(s, Inches(1.6), Inches(4.62), W - Inches(3.2),
+                                          Inches(0.6), size=19, align=PP_ALIGN.CENTER)
+                self._run(p2, subtitle, size=19, color=self.s.main)
+            if meta:
+                tb3, tf3, p3 = self._text(s, Inches(1.6), Inches(5.35), W - Inches(3.2),
+                                          Inches(0.5), size=12, align=PP_ALIGN.CENTER)
+                self._run(p3, meta, size=12, color=_rgb("7A6A55"))
+
+        elif kind == "atmos":
+            # 地理：白底 + 右侧斜切云天块 + 底部通栏深蓝条 + 橙胶囊专题（地课2 封面取证）
+            self._rect(s, 0, 0, W, H, self.s.white)
+            tri = s.shapes.add_shape(MSO_SHAPE.RIGHT_TRIANGLE, W * 0.55, 0,
+                                     W * 0.45, H - Inches(0.5))
+            tri.fill.solid()
+            tri.fill.fore_color.rgb = self.s.light
+            tri.line.fill.background()
+            tri.shadow.inherit = False
+            tri.rotation = 0.0
+            self._rect(s, 0, H - Inches(0.5), W, Inches(0.5), self.s.main)
+            if tag:
+                tw = Inches(0.28 * len(tag) + 0.55)
+                self._rect(s, Inches(0.95), Inches(0.85), tw, Inches(0.42),
+                           self.s.gold, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+                tb1, tf1, p1 = self._text(s, Inches(0.95), Inches(0.88), tw, Inches(0.36),
+                                          size=13, align=PP_ALIGN.CENTER,
+                                          anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p1, tag, size=13, bold=True, color=self.s.white)
+            tb, tf, p = self._text(s, Inches(0.9), Inches(1.6), W * 0.5, Inches(1.6),
+                                   size=tsize, line_spacing=1.2)
+            for i, line in enumerate(title.split("\v")):
+                if i:
+                    p.add_line_break()
+                self._run(p, line, size=tsize, bold=True, color=self.s.main,
+                          cn=self.s.font_head)
+            if subtitle:
+                tb2, tf2, p2 = self._text(s, Inches(0.95), Inches(3.35), W * 0.5,
+                                          Inches(0.7), size=19)
+                self._run(p2, subtitle, size=19, color=_rgb("5A6B7B"))
+            if meta:
+                tb3, tf3, p3 = self._text(s, Inches(0.95), Inches(4.3), W * 0.5,
+                                          Inches(0.5), size=13)
+                self._run(p3, meta, size=13, color=_rgb("7A8896"))
+
+        elif kind == "podium":
+            # 政治：左侧红粗竖条 + 顶部深蓝条 + 金色细线（党旗红/政务蓝/金 取证）
+            self._rect(s, 0, 0, W, H, self.s.light)
+            self._rect(s, 0, 0, W, Inches(0.14), self.s.accent)
+            self._rect(s, Inches(0.85), Inches(0.9), Inches(0.28), Inches(3.6),
+                       self.s.main)
+            if tag:
+                tw = Inches(0.3 * len(tag) + 0.55)
+                self._rect(s, W - tw - Inches(0.8), Inches(0.62), tw, Inches(0.42),
+                           self.s.accent, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+                tb1, tf1, p1 = self._text(s, W - tw - Inches(0.8), Inches(0.65), tw,
+                                          Inches(0.36), size=13, align=PP_ALIGN.CENTER,
+                                          anchor=MSO_ANCHOR.MIDDLE)
+                self._run(p1, tag, size=13, bold=True, color=self.s.white)
+            tb, tf, p = self._text(s, Inches(1.45), Inches(1.45), W - Inches(2.6),
+                                   Inches(2.1), size=tsize, line_spacing=1.22)
+            for i, line in enumerate(title.split("\v")):
+                if i:
+                    p.add_line_break()
+                self._run(p, line, size=tsize, bold=True, color=self.s.ink,
+                          cn=self.s.font_head)
+            self._rect(s, Inches(1.48), Inches(3.75), Inches(2.2), Emu(28575), self.s.gold)
+            if subtitle:
+                tb2, tf2, p2 = self._text(s, Inches(1.45), Inches(3.72), W - Inches(2.6),
+                                          Inches(0.7), size=19)
+                self._run(p2, subtitle, size=19, color=self.s.main)
+            if meta:
+                tb3, tf3, p3 = self._text(s, Inches(1.45), Inches(4.85), W - Inches(2.6),
+                                          Inches(0.5), size=12)
+                self._run(p3, meta, size=12, color=_rgb("7A6A6A"))
+
         elif kind == "photo":
             # 化学：浅灰白旋涡 + 深蓝粗标题（左）+ 圆角实验卡片（右）（真实课件封面取证）
             self._rect(s, 0, 0, W, H, self.s.light)
@@ -911,7 +1067,13 @@ class Deck:
                 color = self.t.white if ri == 0 else self.t.ink
                 if ri and highlight and highlight in val:
                     color = self.t.warn
-                self._run(p, val, size=14 if ri else 15, bold=(ri == 0), color=color)
+                # 两列表：左列=条目名，蓝色加粗居中（史轮2-24 答案表格取证）
+                entry_col = (ri > 0 and cols == 2 and ci == 0 and len(val) <= 12)
+                if entry_col:
+                    color = self.t.main
+                # 走 _rich：cell 里的 **关键词**（红粗）和 {{挖空}}（下划线）都要生效
+                self._rich(p, val, size=14 if ri else 15, color=color,
+                           bold=(ri == 0 or entry_col))
         self._chrome(s)
         return s
 
@@ -1061,6 +1223,28 @@ class Deck:
         return s
 
     # ------------------------------------------------ 学科专属版式
+    def template(self, title: str, rows: list[str], *, mode: str = "",
+                 kicker: str = "答题模板"):
+        """历史/政治：答题模板页——顶部模式行 + 青蓝色块内「标签：×××」行（史主2-08 取证）。"""
+        s = self._blank()
+        self._header(s, title, kicker=kicker)
+        y = Inches(1.5)
+        if mode:
+            tb, tf, p = self._text(s, Inches(0.9), y, W - Inches(1.8), Inches(0.5), size=19)
+            self._run(p, "答题模式：", size=19, bold=True, color=self.t.ink)
+            self._rich(p, mode, size=19, bold=True)
+            y += Inches(0.72)
+        bh = min(Inches(0.5) * max(3, len(rows)), H - y - Inches(1.1))
+        self._rect(s, Inches(0.65), y, W - Inches(1.3), bh, _rgb("00B0F0"))
+        tb2, tf2, p2 = self._text(s, Inches(1.05), y + Inches(0.12), W - Inches(2.1),
+                                  bh - Inches(0.24), size=15, line_spacing=1.5)
+        for i, row in enumerate(rows):
+            if i:
+                p2.add_line_break()
+            self._run(p2, row, size=15, bold=True, color=_rgb("111111"))
+        self._chrome(s)
+        return s
+
     def quote(self, title: str, text: str, *, source: str = "", note: str = "",
               kicker: str = "原文"):
         """语文：引文页——大段原文居中，右侧朱砂竖条，出处小字。"""
@@ -1531,6 +1715,42 @@ def _render_scene(deck, block, sec_title: str) -> None:
         cond = next((p.split("：", 1)[-1] for p in parts[1:] if p.startswith(("条件", "加热", "催化"))), "")
         pts = [p for p in parts[1:] if not p.startswith(("条件", "加热", "催化"))]
         deck.reaction(head, eq, condition=cond, points=pts or None)
+    elif kind == "史料":
+        # 历史史料页：材料 + 出处落款（> 史料：…——摘编自《…》）
+        src = ""
+        m = re.search(r"(?:——|--)\s*(.+)$", raw)
+        body = raw
+        if m and len(m.group(1)) < 50:
+            src = m.group(1).strip()
+            body = raw[: m.start()].strip()
+        deck.quote(head, body, source=src, kicker="史料")
+    elif kind == "材料":
+        # 政治时政材料页：材料卡 + 设问（> 材料：… | 设问：…）
+        parts = [x.strip() for x in raw.split("|")]
+        body = parts[0]
+        ask = next((p.split("：", 1)[-1].strip()
+                    for p in parts[1:] if p.startswith(("设问", "问题"))), "")
+        deck.quote(head, body, note=f"设问：{ask}" if ask else "", kicker="时政材料")
+    elif kind == "图表":
+        # 地理图表页：图例 + 判读步骤（> 图表：… | 判读：①…②…）
+        parts = [x.strip() for x in raw.split("|")]
+        legend = parts[0]
+        steps = next((p.split("：", 1)[-1].strip()
+                      for p in parts[1:] if p.startswith(("判读", "步骤", "读图"))), "")
+        deck.bullets(head, [f"图例：{legend}"] +
+                     [f"判读 {s.strip()}" for s in re.split(r"[；;]", steps) if s.strip()],
+                     kicker="图表判读")
+    elif kind == "模板":
+        # 答题模板页：模式行 + 青蓝色块「标签：×××」行（史主2-08 取证）
+        parts = [x.strip() for x in raw.split("|") if x.strip()]
+        mode = ""
+        rows = []
+        for p in parts:
+            if p.startswith(("模式", "答题模式")):
+                mode = p.split("：", 1)[-1].strip()
+            else:
+                rows.append(p)
+        deck.template(head, rows or [raw], mode=mode)
     elif kind == "概念":
         segs = [x.strip() for x in raw.split(">") if x.strip()]
         center = segs[0]
@@ -1586,7 +1806,7 @@ BIG = re.compile(r"^(课前预习|课内探究|当堂检测|课堂检测|课后�
                  r"原题呈现|审题|关键词解读|立意|行文思路|审题常见误区|"
                  r"强基础|研考点|课时精练|必备知识|关键能力|突破题型|掌握解法|高考真题|"
                  r"典例|解题思路|我会做|我能做对|我的反思|课堂互动区|易错清零|情境导入|"
-                 r"读图观变|旁栏思考|探究·实践)")
+                 r"命题透视|考情前瞻|核心突破|重难全析|解题赋能|素养提升|体系构建|思维导图|知识解构|考向破译|考向探究|考点突破|对标素养|法条链接|错题重做|典题|课前阅读区|重要历史概念|必备知识|阶段特征|考察目标|难点突破|中外对比|概念阐释|大事年表|知识导学|情境探究|时空坐标|背诵任务|知识链接|拓展深化|答题模板|易错清单|微专题|类题巩固|变式训练|评分细则|温故知新|简图绘制|考点提取|读图观变|旁栏思考|探究·实践)")
 
 
 def _cover_index(hour: str) -> str:

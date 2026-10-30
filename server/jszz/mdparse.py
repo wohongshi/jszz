@@ -123,7 +123,7 @@ def parse(md: str) -> Doc:
         # meta block  > key: value
         if stripped.startswith(">"):
             body = stripped.lstrip("> ").strip()
-            mm_scene = re.match(r"^(引文|公式|对照|反应|概念)\s*[:：]\s*(.+)$", body)
+            mm_scene = re.match(r"^(引文|公式|对照|反应|概念|史料|材料|图表|模板)\s*[:：]\s*(.+)$", body)
             if mm_scene:
                 (cur.blocks if cur else doc.preface).append(
                     Block("scene", text=mm_scene.group(2).strip(),
@@ -240,17 +240,19 @@ def parse(md: str) -> Doc:
 
 
 def blanks(text: str) -> list[tuple[str, str]]:
-    """Split a 学案 paragraph into ('text', s) / ('blank', 答案原文) runs from {{...}}.
+    """Split a 学案 paragraph into ('text', s) / ('blank', 答案原文) / ('strong', 词) runs.
 
     blank 的 val 是挖空处的答案原文（真实答案版学案把答案红粗下划线填回）。
+    strong 的 val 是 `**关键词**`（真实资料：关键词红粗，如得分点/条目名）。
     """
     out = []
-    for part in re.split(r"(\{\{[^}]*\}\})", text):
+    for part in re.split(r"(\{\{[^}]*\}\}|\*\*[^*]+\*\*)", text):
         if not part:
             continue
         if part.startswith("{{") and part.endswith("}}"):
-            inner = part[2:-2].strip()
-            out.append(("blank", inner))
+            out.append(("blank", part[2:-2].strip()))
+        elif part.startswith("**") and part.endswith("**"):
+            out.append(("strong", part[2:-2].strip()))
         else:
             out.append(("text", part))
     return out

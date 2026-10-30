@@ -123,6 +123,27 @@ STYLES: dict[str, Style] = {
         font_cn="微软雅黑", font_head="微软雅黑", cover="radial", header="greenblock",
         deco="rings",
     ),
+    # 历史：宣纸底 + 赭褐墨字 + 土黄（古画/赭石）+ 朱红印章；宋体（史主2/史轮2 取证）
+    "history": Style(
+        key="history", label="历史", main_hex="6B4A2A", accent_hex="BF7C2D", warn_hex="C00000",
+        light_hex="EFE7D9", ink_hex="3A3330", gold_hex="B03A2E",
+        font_cn="宋体", font_head="黑体", cover="scroll", header="scrollbar",
+        deco="seal", numerals="壹贰叁肆伍陆柒捌玖拾",
+    ),
+    # 地理：深蓝（天空/水系）+ 浅蓝斜切 + 橙色专题标签（地课2 封面取证）
+    "geography": Style(
+        key="geography", label="地理", main_hex="12538F", accent_hex="2E8BC0", warn_hex="C00000",
+        light_hex="E8F2FB", ink_hex="1B2430", gold_hex="E8622A",
+        font_cn="微软雅黑", font_head="黑体", cover="atmos", header="skyline",
+        deco="wind",
+    ),
+    # 政治：党旗红 + 政务蓝 + 金（复习必修四/时政冲刺课件 XML 取证）
+    "politics": Style(
+        key="politics", label="政治", main_hex="A61B2B", accent_hex="2E5FA8", warn_hex="C00000",
+        light_hex="FBEEEC", ink_hex="2B1F20", gold_hex="C8A24A",
+        font_cn="微软雅黑", font_head="黑体", cover="podium", header="redbar",
+        deco="flag",
+    ),
     # 通用（无学科信息时的默认）
     "general": Style(
         key="general", label="通用", main_hex="1F4E79", accent_hex="2E75B6", warn_hex="C00000",
@@ -141,8 +162,10 @@ ALIASES = {
 SUBJECT_KEYS = {
     "语文": "chinese", "数学": "math", "英语": "english",
     "物理": "physics", "化学": "chemistry", "生物": "biology",
+    "政治": "politics", "历史": "history", "地理": "geography",
     "chinese": "chinese", "math": "math", "english": "english",
     "physics": "physics", "chemistry": "chemistry", "biology": "biology",
+    "politics": "politics", "history": "history", "geography": "geography",
 }
 
 
@@ -154,17 +177,40 @@ def get(name: str | None) -> Style:
     return STYLES.get(key, STYLES["general"])
 
 
-# 六科关键词 → 风格键，用于从标题/正文猜学科（猜不出返回 ""）
+# 九科关键词 → 风格键，用于从标题/正文猜学科（猜不出返回 ""）
+# 一级：学科名本身（最准）。二级：真实文件名里挖出的学科线索词
+# （历史「纲要/课学案」、地理「地质/地貌/大气」、政治「促优/时政/必修四」；
+#  来源 tools/mine_subject_terms.py，取本学科高频、他学科罕见者）
 _GUESS = [
     ("物理", "physics"), ("数学", "math"), ("英语", "english"),
     ("化学", "chemistry"), ("生物", "biology"), ("语文", "chinese"),
+    ("政治", "politics"), ("历史", "history"), ("地理", "geography"),
+]
+_GUESS2 = [
+    ("纲要", "history"), ("纲要上", "history"), ("纲要下", "history"),
+    ("课学案", "history"), ("大事年表", "history"), ("中古时期", "history"),
+    ("史料", "history"), ("通史", "history"), ("历史试题", "history"),
+    ("地质", "geography"), ("地貌", "geography"), ("大气", "geography"),
+    ("热力环流", "geography"), ("天气系统", "geography"), ("洋流", "geography"),
+    ("气压带", "geography"), ("水循环", "geography"), ("等高线", "geography"),
+    ("植被与土壤", "geography"),
+    ("促优", "politics"), ("时政", "politics"), ("人民代表大会", "politics"),
+    ("唯物史观", "politics"), ("人生价值观", "politics"), ("必修四", "politics"),
+    ("中国特色社会主义", "politics"),
 ]
 
 
 def guess(*texts: str) -> str:
-    """从标题/正文里猜学科键；md 忘写 `> 学科：` 时兜底，别再让物理卷戴语文口令。"""
+    """从标题/正文里猜学科键；md 忘写 `> 学科：` 时兜底，别再让物理卷戴语文口令。
+
+    先扫学科名，再扫真实文件名的学科线索词——政史地的标题常常不写学科名
+    （`纲要上第11课` / `专题11 热力环流` / `复习必修四第二单元`）。
+    """
     blob = " ".join(t for t in texts if t)
     for kw, key in _GUESS:
+        if kw in blob:
+            return key
+    for kw, key in _GUESS2:
         if kw in blob:
             return key
     return ""
@@ -243,6 +289,71 @@ def draw_deco(slide, s: Style) -> None:
             ring.line.color.rgb = rgb("DCEBE0")
             ring.line.width = Pt(1.25)
             ring.shadow.inherit = False
+    elif kind == "seal":
+        # 历史：右下朱红方印（真实课件印章）+ 左上卷云线
+        stamp = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
+                                       W - Inches(1.75), H - Inches(1.45),
+                                       Inches(0.66), Inches(0.66))
+        stamp.fill.solid()
+        stamp.fill.fore_color.rgb = rgb("B03A2E")
+        stamp.line.fill.background()
+        stamp.shadow.inherit = False
+        try:
+            stamp.adjustments[0] = 0.12
+        except Exception:
+            pass
+        # 印文（真实课件印章是有字的朱文印）
+        tb = slide.shapes.add_textbox(W - Inches(1.75), H - Inches(1.42),
+                                      Inches(0.66), Inches(0.6))
+        tf = tb.text_frame
+        tf.word_wrap = False
+        p0 = tf.paragraphs[0]
+        p0.alignment = 3                      # PP_ALIGN.CENTER
+        r0 = p0.add_run()
+        r0.text = (s.label[-1] if s.key == "history" else s.label[:1])
+        r0.font.size = Pt(20)
+        r0.font.bold = True
+        r0.font.color.rgb = rgb("F6EFE4")
+        for i, (x, y, w) in enumerate([(0.55, 0.42, 1.1), (0.75, 0.62, 0.8)]):
+            ln = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(x), Inches(y),
+                                        Inches(w), Emu(9525))
+            ln.fill.solid()
+            ln.fill.fore_color.rgb = rgb("D9CDB8")
+            ln.line.fill.background()
+            ln.shadow.inherit = False
+    elif kind == "wind":
+        # 地理：右上斜切风线（呼应封面云天斜切）+ 等高线弧
+        for i, y in enumerate([1.15, 1.55, 1.95]):
+            ln = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE,
+                                        W - Inches(2.6 + 0.35 * i), Inches(y),
+                                        Inches(1.9), Emu(9525))
+            ln.fill.solid()
+            ln.fill.fore_color.rgb = rgb("BFD9EF")
+            ln.line.fill.background()
+            ln.shadow.inherit = False
+            ln.rotation = -18.0
+        arc = slide.shapes.add_shape(MSO_SHAPE.OVAL, W - Inches(2.9), Inches(0.9),
+                                     Inches(2.3), Inches(1.5))
+        arc.fill.background()
+        arc.line.color.rgb = rgb("CFE2F3")
+        arc.line.width = Pt(1.1)
+        arc.shadow.inherit = False
+    elif kind == "flag":
+        # 政治：左上红旗三角 + 金色星点
+        tri = slide.shapes.add_shape(MSO_SHAPE.ISOSCELES_TRIANGLE,
+                                     Inches(0.42), Inches(0.3), Inches(0.7), Inches(0.5))
+        tri.fill.solid()
+        tri.fill.fore_color.rgb = rgb("A61B2B")
+        tri.line.fill.background()
+        tri.shadow.inherit = False
+        tri.rotation = -90.0
+        for i, (x, y) in enumerate([(1.25, 0.42), (1.45, 0.58), (1.65, 0.42)]):
+            st = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(x), Inches(y),
+                                        Inches(0.09), Inches(0.09))
+            st.fill.solid()
+            st.fill.fore_color.rgb = rgb("C8A24A")
+            st.line.fill.background()
+            st.shadow.inherit = False
 
 
 # ------------------------------------------------------------------ 字体兜底
