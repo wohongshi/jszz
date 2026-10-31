@@ -279,9 +279,91 @@ def analyze(rows: list[dict], columns: dict | None = None,
         if cnt:
             grade_dist[g] = dict(sorted(cnt.items()))
 
+    # 弱科识别 + 提升推荐（按均分/及格率/优秀率综合判定，照写作工艺短句采分）
+    weak = _weak_subjects(per_subj, total_stats)
+    recommendations = _recommendations(per_subj, weak, trend)
+
     return {
         "ok": True, "n_rows": len(rows), "columns": columns,
         "subjects": per_subj, "total": total_stats, "top": top, "bottom": bottom,
         "subject_tops": subject_tops, "class_stats": class_stats,
         "trend": trend, "grade_dist": grade_dist, "rank_key": rank_key,
+        "weak_subjects": weak, "recommendations": recommendations,
     }
+
+
+def _weak_subjects(per_subj: dict, total_stats: dict) -> list[dict]:
+    """弱科判定：均分率（均分/满分）低于阈值，或及格率/优秀率明显偏低。
+
+    返回按「弱度」排序的 [{subject, mean, full, mean_rate, pass_rate, excellence_rate, reason}]。
+    """
+    out = []
+    for s, st in per_subj.items():
+        if not st.get("n") or not st.get("full"):
+            continue
+        # 总分列不当弱科（它是合计）
+        if s in ("总分", "总和", "总成绩", "合计"):
+            continue
+        rate = st.get("mean", 0) / st["full"] if st.get("full") else 0
+        pr = st.get("pass_rate", 100)
+        er = st.get("excellence_rate", 100)
+        # 弱度：均分率权重高，及格率/优秀率作修正
+        weakness = (1 - rate) * 0.6 + (1 - pr / 100) * 0.25 + (1 - er / 100) * 0.15
+        reasons = []
+        if rate < 0.6:
+            reasons.append(f"均分率仅 {rate * 100:.0f}%（{st['mean']}/{st['full']}）")
+        if pr < 60:
+            reasons.append(f"及格率 {pr}% 偏低")
+        if er < 15:
+            reasons.append(f"优秀率 {er}% 偏低")
+        if reasons:
+            out.append({"subject": s, "mean": st.get("mean"), "full": st.get("full"),
+                        "mean_rate": round(rate * 100, 1), "pass_rate": pr,
+                        "excellence_rate": er, "weakness": round(weakness, 3),
+                        "reason": "，".join(reasons)})
+    out.sort(key=lambda x: x["weakness"], reverse=True)
+    return out
+
+
+def _recommendations(per_subj: dict, weak: list[dict], trend: dict | None) -> list[str]:
+    """提升推荐：针对弱科给可操作措施（照写作工艺：短句、带采分点思维、不口语）。
+
+    每条带各科**具体短板数字**（均分率/及格率/优秀率里最刺眼的那个），
+    不让多科落进同一模板句读起来像机器套话。
+    """
+    recs = []
+    for i, w in enumerate(weak[:3]):
+        s = w["subject"]
+        rank = ["首要", "其次", "第三"][i] if i < 3 else "另外"
+        # 挑该科最弱短板做切入点；但优秀率常并列 0（多科都是 0），此时改用均分率
+        # （29/34/47 各不同），否则三科都指向"优秀率0"→ 动作雷同读着像机器套话。
+        gaps = [(w["mean_rate"], "均分率"), (w["pass_rate"], "及格率"),
+                (w["excellence_rate"], "优秀率")]
+        gaps.sort(key=lambda x: x[0])
+        worst_val, worst_name = gaps[0]
+        if worst_name == "优秀率" and w["excellence_rate"] == 0:
+            worst_val, worst_name = w["mean_rate"], "均分率"
+        # 动作文案 + 结尾短语都随序号轮换，杜绝三科同款（含结尾一字不差）
+        fills = ["回归教材抓基本概念与常考题型，每日 10 分钟基础默写",
+                 "分层布置作业，基础题全员过关、中档题每日 1 题",
+                 "梳理核心公式与定理，配合错题重做补齐断层"]
+        tails = ["一月内冲及格率 60%", "先把及格线稳住再说", "目标及格率过 6 成"]
+        if w["pass_rate"] < 40:
+            recs.append(f"{rank}突破 {s}：{worst_name}仅 {worst_val}%"
+                        f"（{w['mean']}/{w['full']}），{fills[i % 3]}，{tails[i % 3]}")
+        elif w["pass_rate"] < 60:
+            recs.append(f"{rank}突破 {s}：及格率 {w['pass_rate']}% 未过半，"
+                        f"{fills[(i + 1) % 3]}，{tails[(i + 1) % 3]}")
+        elif w["excellence_rate"] < 15:
+            recs.append(f"{rank}提优 {s}：优秀率仅 {w['excellence_rate']}%，"
+                        f"强化综合与压轴题专练，每周 2 道精练冲 15%")
+        else:
+            recs.append(f"{rank}巩固 {s}：针对 {worst_name} 薄弱知识点专项突破，"
+                        f"建错题本定期重做")
+    # 趋势建议
+    if trend and trend.get("declined"):
+        n = len(trend["declined"])
+        recs.append(f"退步学生跟踪：{n} 名学生近期退步，个别谈话 + 错题重做，一周内复测")
+    # 通识建议（写作工艺：规范答题）
+    recs.append("规范答题：按采分点分行书写，杜绝口语化表达，减少非知识性失分")
+    return recs

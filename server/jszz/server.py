@@ -435,8 +435,8 @@ def make_drill(markdown: str, name: str = "", answers: bool = False) -> dict:
 
 @mcp.tool()
 def make_grade_report(scores: str, name: str = "", subject: str = "",
-                      notes: str = "") -> dict:
-    """成绩分析报告：成绩表 → 可打印 docx（教师质量分析版式）。
+                      notes: str = "", pptx: bool = True) -> dict:
+    """成绩分析报告：成绩表 → 可打印 docx（教师质量分析版式）+ 汇报 PPT。
 
     scores 是成绩表数据，两种给法：
       1. xlsx 文件绝对路径（适配 U 盘真实三种表：多考试长表「考试|班级|姓名|各科」、
@@ -446,6 +446,7 @@ def make_grade_report(scores: str, name: str = "", subject: str = "",
     自动列检测（学籍号/考号/序号等 ID 列不会误当分数），分析产出：
     各科统计（均分/中位/最高/最低/标准差/及格率/优秀率）+ 分数段分布 + 总分名次榜 +
     单科榜首 + 班级对比 + 多次考试趋势（进步/退步榜）+ 等级分布。
+    pptx=True 额外出汇报 PPT（成绩分析会用：封面→目录→章节页→数据表→诊断建议，照真实分析会课件）。
     notes 可追加教学建议（\\n 分段）。返回 files / summary 指标。
     """
     from .grades import analyze, load_scores
@@ -465,6 +466,12 @@ def make_grade_report(scores: str, name: str = "", subject: str = "",
                                             school=config.load().get("school", ""),
                                             title=title, subject=subject,
                                             extra_sections=extra))
+    if pptx:
+        from .pptx_render import build_grade_deck
+        files["pptx"] = str(build_grade_deck(
+            a, out / f"{_slug(title)}.pptx",
+            school=config.load().get("school", ""), title=title,
+            subject=subject, notes=notes or ""))
     # 摘要指标（供智能体直接读，不必开 docx）
     summary = {
         "n_rows": a.get("n_rows"),

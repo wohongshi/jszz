@@ -140,6 +140,18 @@ for raw in ["【参考答案】", "试题分析（命题立意）", "备考提�
 check(not BIG.match(sec_key("普通章节标题")), "普通标题不误判为大栏目")
 check(not BIG.match(sec_key("知识点1 匀变速")), "知识点小标题不误判为大栏目")
 
+# 断行回归：真实题源「2.（2024…」「3.《史记…」N. 后接全角括号/书名号（无空格），
+# 旧断行正则 \s 要空格导致漏判、题干粘进上一题 D 选项（选项串行）。
+from jszz.mdparse import parse as _parse_break  # noqa: E402
+_break_md = "# t\n【练习】\n1.（2025·云南）第一题题干（　）\nA．甲　B．乙　C．丙　D．丁\n2.（2024·福建）第二题题干（　）\nA．戊　B．己　C．庚　D．辛\n3.《史记》第三题题干（　）\nA．壬　B．癸　C．子　D．丑\n"
+_break_texts = [b.text for b in _parse_break(_break_md).flat_blocks()]
+# 题干必须各自成块，不许粘进上一题选项（D．丁 后跟 2. 即为粘连）
+for _needle in ("2. （2024", "3. 《史记"):
+    _solo = [t for t in _break_texts if _needle in t]
+    check(len(_solo) == 1, f"题号 {_needle} 独立成块（{len(_solo)}）")
+check(not any(("D．丁" in t and "2." in t) or ("D．辛" in t and "3." in t)
+              for t in _break_texts), "题干不粘进上一题 D 选项")
+
 print("== 九科视觉（语数英物化生政史地）==")
 from jszz import subject_style as ss  # noqa: E402
 
@@ -423,6 +435,45 @@ check(_mr["summary"]["total_mean"] == 165.0
       and _mr["summary"]["subjects"]["语文"]["mean"] == 88.0,
       "make_grade_report：摘要指标正确")
 check(Path(_mr["files"]["docx"]).exists(), "make_grade_report：docx 落盘")
+# 成绩分析汇报 PPT（钉 float-EMU 修复：add_table 尺寸写 int，写 float 读回会崩）
+check("pptx" in _mr["files"] and Path(_mr["files"]["pptx"]).exists(),
+      "make_grade_report：pptx 汇报产物落盘")
+from pptx import Presentation as _P  # noqa: E402
+_pg = _P(_mr["files"]["pptx"])
+check(len(_pg.slides) >= 5, "make_grade_report：汇报 PPT ≥5 页（封面/章节/数据/建议）")
+_dt = "\n".join(sh.text_frame.text for s in _pg.slides for sh in s.shapes if sh.has_text_frame)
+check("成绩分析" in _dt and ("均分" in _dt or "教学建议" in _dt),
+      "make_grade_report：汇报 PPT 含分析内容")
+
+# 弱科识别 + 提升推荐（钉：每条推荐不雷同、结尾各异，别退化成机器套话）
+# 夹具含真实弱科（英语均分率 <60%、及格率低）
+_weak_rows = [
+    {"姓名": "甲", "班级": "1", "语文": 90, "数学": 80, "英语": 40, "总分": 210},
+    {"姓名": "乙", "班级": "1", "语文": 85, "数学": 75, "英语": 35, "总分": 195},
+    {"姓名": "丙", "班级": "2", "语文": 88, "数学": 82, "英语": 30, "总分": 200},
+]
+_a2 = analyze(*[load_scores(_weak_rows)[k] for k in ("rows", "columns")])
+check("weak_subjects" in _a2 and "recommendations" in _a2,
+      "analyze：含 weak_subjects/recommendations 字段")
+check(len(_a2["weak_subjects"]) > 0, "弱科识别：低分科目被识别")
+check(_a2["weak_subjects"][0]["subject"] == "英语",
+      "弱科识别：英语（均分率最低）排最前")
+_rcs = _a2["recommendations"]
+check(len(_rcs) >= 2, "提升推荐：有推荐条目")
+check(len(set(_rcs[:2])) == len(_rcs[:2]), "提升推荐：前几条两两不雷同")
+# 弱科/推荐进 docx + pptx 产物
+_dt2 = "\n".join(p.text for p in Document(_mr["files"]["docx"]).paragraphs)
+check("弱科" in _dt2 and "提升推荐" in _dt2, "docx：弱科+提升推荐显示")
+_pt2 = ""
+for s in _P(_mr["files"]["pptx"]).slides:
+    for sh in s.shapes:
+        if sh.has_text_frame:
+            _pt2 += sh.text_frame.text + "\n"
+        if sh.has_table:
+            for row in sh.table.rows:
+                for c in row.cells:
+                    _pt2 += c.text + "\n"
+check("弱科" in _pt2 and "提升推荐" in _pt2, "pptx：弱科+提升推荐显示")
 
 print("== 打包完整性 ==")
 skill_zip = ROOT / "dist" / "jszz.skill"

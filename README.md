@@ -47,6 +47,10 @@
 |---|---|
 | <img src="docs/shots/subjects-scenes.png" width="420"> | <img src="docs/shots/ppt_paper-10.png" width="420"> |
 
+| 练习/讲义（每日一练·培优，题目+答案） | 成绩分析（11科统计+分数段） |
+|---|---|
+| <img src="docs/shots/sample_drill_p-5.png" width="205"> | <img src="docs/shots/sample_grade_p-1.png" width="205"> |
+
 ## ✨ 亮点
 
 - 🎯 **规范从真实资料来**——793 个文件全量抽取（788 成功、405 万字），6 片并行深读 479 份 +
@@ -97,7 +101,7 @@ flowchart LR
 ```
 
 ```
-server/jszz/    36 个 MCP 工具 + 渲染器 + WebUI（8717 行）
+server/jszz/    36 个 MCP 工具 + 渲染器 + WebUI（8942 行）
 skill/          SKILL.md + 12 篇排版规范（打包成 dist/jszz.skill）
 examples/       11 份学科样例（九科 + 2 份变体）+ 学案/试卷示例 Markdown
 tools/          webimg 找图（浏览器兜底）· asset_lib 素材索引 · shots_covers · readme_numbers

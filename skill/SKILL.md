@@ -1,12 +1,12 @@
 ---
 name: jszz
-description: 中学备课：B站找素材、学科网组卷、学案/试卷一键出 docx 和 PPT。用 jszz MCP 工具时先读本技能。
+description: Use when 出学案/写试卷/做课件/成绩分析/组卷/找素材（B站·学科网·抖音·小红书·视频号）。
 version: 1.0.0
 author: jszz
 license: MIT
 metadata:
   hermes:
-    tags: [education, mcp, docx, pptx, bilibili, zxxk, lesson-plan, exam-paper]
+    tags: [education, 备课, 学案, 试卷, 课件, 组卷, 成绩分析, mcp, docx, pptx, bilibili, zxxk, douyin, xiaohongshu, lesson-plan, exam-paper]
     requires:
       mcp: jszz
       binaries: [node]

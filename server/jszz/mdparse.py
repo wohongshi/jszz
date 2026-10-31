@@ -213,8 +213,10 @@ def parse(md: str) -> Doc:
         i += 1
         while i < len(lines):
             nxt = lines[i].strip()
+            # 断行检测须与下方 num 块检测（\s*）一致：真实题源常写「2.（2024…」「3.《史记…」，
+            # N. 后直接接全角括号/书名号（无空格），旧正则 \s 要空格导致漏判、题干粘进上一题选项。
             if (not nxt or nxt.startswith(("#", ">", "|", "![", "- ", "* ", "---"))
-                    or re.match(r"^\d{1,2}[.、)]\s", nxt)):
+                    or re.match(r"^\d{1,2}[.、)）]", nxt)):
                 break
             buf.append(nxt)
             i += 1

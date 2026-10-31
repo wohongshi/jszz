@@ -1,0 +1,76 @@
+===== [1/4] 全模块编译 =====
+COMPILE_OK
+
+===== [2/4] selftest 全量回归 =====
+  ok   channels 链接判定
+  ok   channels AES 解密还原 ftyp
+  ok   channels 坏 key 报错不产坏文件
+== 小红书 + 统一取材 ==
+  ok   xhs 链接判定
+  ok   xhs 长链抠 ID
+  ok   xhs 空链返回失败
+  ok   xhs 未配 cookie 如实报 false
+  ok   xhs 诚实边界：无 cookie 不假装自动下载
+  ok   xhs has_cookie 未配为 false
+  ok   bili 链接判定（b23.tv 短链也认）
+  ok   material_fetch 平台识别 4/4
+== 练习/讲义（drill）==
+  ok   drill：每日一练标题+栏目
+  ok   drill：真题源内联
+  ok   drill：培优五栏目全在
+  ok   make_drill：MCP 产物齐
+  ok   make_drill：QA 全过
+== 成绩分析（grade）==
+  ok   grade：ID 列（学籍号）不误当科目
+  ok   grade：考次/总分列检测
+  ok   grade：科目均分正确（90+70+95+65）/4=80
+  ok   grade：总分均分正确
+  ok   grade：名次榜按分排序
+  ok   grade：多次考试趋势（同名学生聚合）
+  ok   grade：进步榜 delta 正确（183-170=13）
+  ok   grade：名次榜按最近考次去重（甲只占 1 席且取最近分 200）
+  ok   make_grade_report：JSON 输入出 docx
+  ok   make_grade_report：摘要指标正确
+  ok   make_grade_report：docx 落盘
+  ok   make_grade_report：pptx 汇报产物落盘
+  ok   make_grade_report：汇报 PPT ≥5 页（封面/章节/数据/建议）
+  ok   make_grade_report：汇报 PPT 含分析内容
+  ok   analyze：含 weak_subjects/recommendations 字段
+  ok   弱科识别：低分科目被识别
+  ok   弱科识别：英语（均分率最低）排最前
+  ok   提升推荐：有推荐条目
+  ok   提升推荐：前几条两两不雷同
+  ok   docx：弱科+提升推荐显示
+  ok   pptx：弱科+提升推荐显示
+== 打包完整性 ==
+  ok   jszz.skill 含 SKILL.md
+  ok   jszz.skill 含 references
+
+ALL PASS
+
+===== [3/4] test_mcp 端到端 =====
+ - jszz_style_check
+ - jszz_scoring_suggest
+ - lint_markdown
+ - jszz_status
+ - jszz_configure
+STATUS: {
+  "home": "/root/.hermes/workspace/jszz/.jszz-test",
+  "out_dir": "/root/.hermes/workspace/jszz/.jszz-test/out",
+  "school": "",
+  "cookies": {
+    "bilibili": false,
+    "zxxk": false
+  },
+  "deps": {
+    "yt-dlp": false,
+    "ffmpeg": true,
+    "node": true
+  },
+  "webui": "http://127.0.0.1:8770/"
+}
+BILI total: 1000 first: [高中物理]吃透匀变速直线运动看这个视频就够了！（公式+推论+计算）
+ZXXK ok: True total: 9999
+PREVIEW ok: True chars: 515
+XUEAN files: {'md': '/root/.hermes/workspace/jszz/.jszz-test/out/xuean/第二章_匀变速直线运动的规律（第1课时）.md', 'docx': '/root/.hermes/workspace/jszz/.jszz-test/out/xuean/第二章_匀变速直线运动的规律（第1课时）.docx', 'pptx': '/root/.hermes/workspace/jszz/.jszz-test/out/xuean/第二章_匀变速直线运动的规律（第1课时）.pptx'}
+ASSEMBLE: {'md': '/root/.hermes/workspace/jszz/.jszz-test/out/paper/MCP端到端组卷测试.md', 'docx': '/root/.hermes/workspace/jszz/.jszz-test/out/paper/MCP端到端组卷测试.docx', 'pptx': '/root/.hermes/workspace/jszz/.jszz-test/out/paper/MCP端到端组卷测试.pptx'} 3

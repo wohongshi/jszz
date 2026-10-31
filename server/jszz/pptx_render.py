@@ -1046,9 +1046,9 @@ class Deck:
             return s
         cols = max(len(r) for r in rows)
         rows = [r + [""] * (cols - len(r)) for r in rows]
-        row_h = min(Inches(0.52), (H - Inches(2.3)) / max(1, len(rows)))
+        row_h = int(min(Inches(0.52), (H - Inches(2.3)) / max(1, len(rows))))
         gt = s.shapes.add_table(len(rows), cols, Inches(0.8), Inches(1.5),
-                                W - Inches(1.6), row_h * len(rows)).table
+                                W - Inches(1.6), int(row_h * len(rows))).table
         for ri, row in enumerate(rows):
             for ci, val in enumerate(row):
                 cell = gt.cell(ri, ci)
@@ -2050,6 +2050,121 @@ def build_paper_deck(md: str, out_path: str | Path, *, theme: str = "",
         "审题：圈出限定词（正确的是 / 不正确的是 / 最多 / 至少）",
         "规范：写出依据公式，再代入数据，最后带单位",
         "复盘：把错题按知识点归档，三天后重做一遍",
+    ])
+    return deck.save(out_path)
+
+
+def build_grade_deck(analysis: dict, out_path: str | Path, *, theme: str = "",
+                     school: str = "", title: str = "成绩分析",
+                     subject: str = "", notes: str = "") -> Path:
+    """成绩分析 → 汇报 PPT（照真实成绩分析会课件结构）。
+
+    取证：U 盘 139 页真实《2026年高考山东卷分析暨2027年高考展望》——
+    封面 → 目录（壹/贰/叁章）→ 章节页（大数字）→ 数据统计表（多年对比）→
+    特点/趋势分析 → 备考建议（分阶段）。照此编排 grade 数据。
+    """
+    from .grades import analyze as _an  # noqa: F401  （analysis 已算好，此处仅类型提示）
+    deck = Deck(theme=theme, subject=subject or "general", footer=title, school=school)
+    n = analysis.get("n_rows", 0)
+    tot = analysis.get("total", {})
+    exams = (analysis.get("trend") or {}).get("exams", [])
+    meta = f"共 {n} 人"
+    if exams:
+        meta += f"　考次：{'、'.join(exams[:4])}"
+    deck.cover(title, subtitle="成绩分析报告", meta=meta, tag="质量分析",
+               hint=None if deck.s.key == "chinese" else "")
+
+    # 目录（壹/贰/叁）
+    deck.bullets("目录", [
+        "壹　成绩概况与分数段分布",
+        "贰　各科分析与班级对比",
+        "叁　问题诊断与教学建议",
+    ], kicker="总览")
+
+    # 壹 成绩概况
+    deck.divider("成绩概况与分数段分布", index="壹", subtitle="总分/均分/分布")
+    if tot.get("n"):
+        deck.bullets("总分概况", [
+            f"参考 {tot['n']} 人　均分 {tot['mean']}　中位 {tot['median']}　标准差 {tot['std']}",
+            f"最高 {tot['max']}　最低 {tot['min']}　及格率 {tot['pass_rate']}%　优秀率 {tot['excellence_rate']}%",
+        ], kicker="总览")
+    if tot.get("bands"):
+        band_rows = [["分数段"] + list(tot["bands"].keys()),
+                     ["人数"] + [str(v) for v in tot["bands"].values()]]
+        deck.table("分数段分布", band_rows, kicker="数据")
+    if analysis.get("top"):
+        rk = analysis.get("rank_key", "总分")
+        top_rows = [["名次", "姓名", "班级", rk]]
+        for i, t in enumerate(analysis["top"][:8], 1):
+            top_rows.append([str(i), t["name"], t.get("class_", ""), str(t["score"])])
+        deck.table("总分名次榜（前 8）", top_rows, kicker="数据")
+
+    # 贰 各科分析与班级对比
+    deck.divider("各科分析与班级对比", index="贰", subtitle="均分/及格率/班级差异")
+    subj = analysis.get("subjects", {})
+    if subj:
+        srows = [["科目", "均分", "中位", "最高", "最低", "及格率%", "优秀率%"]]
+        for s, st in subj.items():
+            if st.get("n"):
+                srows.append([s, str(st["mean"]), str(st["median"]), str(st["max"]),
+                              str(st["min"]), str(st["pass_rate"]), str(st["excellence_rate"])])
+        deck.table("各科成绩统计", srows, kicker="数据")
+    if analysis.get("subject_tops"):
+        st_rows = [["科目", "第一名", "第二名", "第三名"]]
+        for s, tops in analysis["subject_tops"].items():
+            cells = [s] + [f"{t['name']}（{t['score']}）" for t in tops[:3]]
+            while len(cells) < 4:
+                cells.append("")
+            st_rows.append(cells)
+        deck.table("单科榜首", st_rows, kicker="数据")
+    if analysis.get("class_stats"):
+        cs_rows = [["班级", "人数", "均分", "中位", "最高", "最低", "及格率%"]]
+        for c, st in analysis["class_stats"].items():
+            if st.get("n"):
+                cs_rows.append([c, str(st["n"]), str(st["mean"]), str(st["median"]),
+                                str(st["max"]), str(st["min"]), str(st["pass_rate"])])
+        deck.table("班级对比", cs_rows, kicker="数据")
+    tr = analysis.get("trend")
+    if tr and tr.get("improved"):
+        imp_rows = [["姓名", "首次", "最近", "提升"]]
+        for t in tr["improved"][:5]:
+            imp_rows.append([t["name"], str(t["first"]), str(t["last"]),
+                             f"+{t['delta']}" if t["delta"] >= 0 else str(t["delta"])])
+        deck.table("进步榜", imp_rows, kicker="数据")
+
+    # 叁 弱科分析与提升推荐（用分析器的 weak_subjects/recommendations，与 docx 一致）
+    deck.divider("弱科分析与提升推荐", index="叁", subtitle="弱科归因/提升措施")
+    weak = analysis.get("weak_subjects") or []
+    recs = analysis.get("recommendations") or []
+    if weak:
+        wrows = [["科目", "均分率%", "均分/满分", "及格率%", "优秀率%", "弱科原因"]]
+        for w in weak[:5]:
+            wrows.append([w["subject"], str(w["mean_rate"]), f"{w['mean']}/{w['full']}",
+                          str(w["pass_rate"]), str(w["excellence_rate"]), w["reason"]])
+        deck.table("弱科识别（按均分率/及格率/优秀率综合判定）", wrows, kicker="诊断")
+    diag = []
+    for w in weak[:2]:
+        diag.append(f"{w['subject']}均分率仅 {w['mean_rate']}%（{w['mean']}/{w['full']}），{w['reason']}")
+    if tot.get("n") and tot.get("pass_rate", 100) < 80:
+        diag.append(f"及格率 {tot['pass_rate']}% 偏低，关注低分段学生的基础落实")
+    if tr and tr.get("declined"):
+        diag.append(f"{len(tr['declined'])} 名学生退步明显，需个别谈话与错题跟踪")
+    if not diag:
+        diag = ["整体成绩稳定，继续保持分层训练", "关注学科均衡，避免偏科拉分"]
+    deck.bullets("问题诊断", diag, kicker="归因", numbered=True)
+    if recs:
+        deck.bullets("提升推荐", recs, kicker="措施", numbered=True)
+    else:
+        advice = [ln.strip() for ln in (notes or "").split("\n") if ln.strip()]
+        if not advice:
+            advice = ["分层布置作业：基础题全员过关，提高题面向尖子",
+                      "错题重做：建立错题本，三天后重做一遍",
+                      "规范答题：按采分点分行书写，杜绝口语化表达"]
+        deck.bullets("教学建议", advice, kicker="措施", numbered=True)
+    deck.closing("小结", [
+        f"本次参考 {n} 人，均分 {tot.get('mean', '—')}",
+        "数据背后找问题，问题背后定措施",
+        "下一阶段：抓基础、抓规范、抓落实",
     ])
     return deck.save(out_path)
 

@@ -864,6 +864,27 @@ def render_grade_report(analysis: dict, out_path: str | Path, *, school: str = "
             _para(doc, gname, size=11, bold=True, space_after=2)
             _stat_table(doc, grow, head_fill="2E75B6")
 
+    # 八、弱科分析与提升推荐（照写作工艺：短句采分、规范表述）
+    weak = d.get("weak_subjects") or []
+    recs = d.get("recommendations") or []
+    if weak or recs:
+        _heading(doc, "八、弱科分析与提升推荐", 2, big=True, size=13)
+        if weak:
+            _para(doc, "弱科识别（按均分率/及格率/优秀率综合判定）：",
+                  size=11, bold=True, space_after=2)
+            wrows = [["科目", "均分率%", "均分/满分", "及格率%", "优秀率%", "弱科原因"]]
+            for w in weak[:5]:
+                wrows.append([w["subject"], str(w["mean_rate"]),
+                              f"{w['mean']}/{w['full']}", str(w["pass_rate"]),
+                              str(w["excellence_rate"]), w["reason"]])
+            _stat_table(doc, wrows, head_fill="C0392B")
+        if recs:
+            _para(doc, "提升推荐：", size=11, bold=True, space_after=2)
+            for r in recs:
+                p = _para(doc, r, size=11, left_indent=0.55, line=1.5, space_after=2)
+                _shade(p, "EEF4FB")
+                _left_bar(p, "2E86D6", 12)
+
     # 追加手写部分（教学建议等）
     for sec_title, body in (extra_sections or []):
         _heading(doc, sec_title, 2, big=True, size=13)
