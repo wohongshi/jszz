@@ -45,9 +45,10 @@ class Browser:
         s.bind(("127.0.0.1", 0))
         self.port = s.getsockname()[1]
         s.close()
+        # 境外图源（Wikimedia 等）直连不通；clash 按需代理在 7890 时自动带
+        args = [CHROMEDRIVER, f"--port={self.port}"]
         self.proc = subprocess.Popen(
-            [CHROMEDRIVER, f"--port={self.port}"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         base = f"http://127.0.0.1:{self.port}"
         for _ in range(40):
             try:
@@ -56,11 +57,17 @@ class Browser:
             except Exception:
                 import time
                 time.sleep(0.25)
+        chrome_args = [
+            "--headless=new", "--no-sandbox", "--disable-gpu",
+            "--disable-dev-shm-usage", "--window-size=1400,1000"]
+        try:
+            urllib.request.urlopen("http://127.0.0.1:7890", timeout=1)
+            chrome_args.append("--proxy-server=http://127.0.0.1:7890")
+        except Exception:
+            pass
         body = json.dumps({"capabilities": {"alwaysMatch": {
             "browserName": "chrome",
-            "goog:chromeOptions": {"binary": CHROME_BIN, "args": [
-                "--headless=new", "--no-sandbox", "--disable-gpu",
-                "--disable-dev-shm-usage", "--window-size=1400,1000"]}}}})
+            "goog:chromeOptions": {"binary": CHROME_BIN, "args": chrome_args}}}})
         req = urllib.request.Request(base + "/session", data=body.encode(),
                                      headers={"Content-Type": "application/json"})
         self.sid = json.loads(urllib.request.urlopen(req, timeout=30).read())["value"]["sessionId"]
@@ -228,9 +235,19 @@ def download(url: str, title: str = "", query: str = "") -> dict:
     try:
         data = _get(url, binary=True)
     except Exception:
-        data = download_browser(url)   # HTTP 被挡 → 浏览器页面上下文 fetch
+        data = b""
     if not data:
-        raise RuntimeError(f"下载失败（HTTP 与浏览器均未取到）: {url}")
+        # 境外站直连不通 → 经本机代理取（比浏览器兜底快）
+        try:
+            r = subprocess.run(["proxy-run", "--", "curl", "-sL", "-m", "25",
+                                "-A", UA, url], capture_output=True, timeout=60)
+            data = r.stdout
+        except Exception:
+            data = b""
+    if not data:
+        data = download_browser(url)   # 再不行 → 浏览器页面上下文 fetch
+    if not data:
+        raise RuntimeError(f"下载失败（HTTP/代理/浏览器均未取到）: {url}")
     ext = ".jpg"
     m = re.search(r"\.(png|jpe?g|gif|webp|svg)", urllib.parse.urlparse(url).path.lower())
     if m:

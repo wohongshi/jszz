@@ -380,6 +380,8 @@ def _render_blocks(doc, blocks, *, body_size=12, indent=0.74, line=1.5,
                 p = doc.add_paragraph()
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 p.add_run().add_picture(str(path), width=Cm(9))
+                # 图注必须跟图同页：图片段 keep_with_next，否则分页会把图注挤到下页（图文分家）
+                p.paragraph_format.keep_with_next = True
                 if b.text:
                     _para(doc, b.text, size=9, align=WD_ALIGN_PARAGRAPH.CENTER, color=GREY)
         elif b.kind == "answer":
@@ -437,6 +439,76 @@ def _render_blocks(doc, blocks, *, body_size=12, indent=0.74, line=1.5,
                     _style_run(p.add_run(f"[{lab}] "), CN_HEAD, EN_BODY, body_size - 1,
                                bold=True, color=RGBColor(0x2E, 0x75, 0xB6))
                     _style_run(p.add_run(seg.strip()), CN_BODY, EN_BODY, body_size)
+            elif st == "口诀":
+                p = _para(doc, "", size=body_size + 3, align=WD_ALIGN_PARAGRAPH.CENTER,
+                          line=1.5, space_after=4)
+                _shade(p, "FFF7E6")
+                _left_bar(p, "E8A33D", 12)
+                segs = [x.strip() for x in re.split(r"[，,；;]", text) if x.strip()]
+                for i, seg in enumerate(segs):
+                    if i:
+                        p.add_run().add_break()
+                    _style_run(p.add_run(seg), CN_BODY, EN_BODY, body_size + 3,
+                               bold=True, color=RGBColor(0x8A, 0x5A, 0x1B))
+            elif st == "规范表述":
+                # 失分对照：左错（不得分）右对（得分），用红/绿两列短行
+                for seg in text.split("|"):
+                    seg = seg.strip()
+                    if not seg:
+                        continue
+                    if "｜" in seg:
+                        w, _, r = seg.partition("｜")
+                    elif "→" in seg:
+                        w, _, r = seg.partition("→")
+                    else:
+                        w, r = seg, ""
+                    p = _para(doc, "", size=body_size, first_indent=indent, line=line,
+                              space_after=2)
+                    _style_run(p.add_run("✗ "), CN_BODY, EN_BODY, body_size,
+                               bold=True, color=RGBColor(0xC8, 0x1E, 0x1E))
+                    _style_run(p.add_run(w.strip()), CN_BODY, EN_BODY, body_size,
+                               color=RGBColor(0x8A, 0x1B, 0x1B))
+                    if r.strip():
+                        _style_run(p.add_run("　→　"), CN_BODY, EN_BODY, body_size - 1)
+                        _style_run(p.add_run("✓ "), CN_BODY, EN_BODY, body_size,
+                                   bold=True, color=RGBColor(0x2E, 0x7D, 0x32))
+                        _style_run(p.add_run(r.strip()), CN_BODY, EN_BODY, body_size,
+                                   color=RGBColor(0x1B, 0x5E, 0x20))
+            elif st == "采分":
+                for seg in text.split("|"):
+                    seg = seg.strip()
+                    if not seg:
+                        continue
+                    m = re.match(r"^(要点\s*\d+[:：])", seg)
+                    p = _para(doc, "", size=body_size, first_indent=indent, line=line,
+                              space_after=2)
+                    if m:
+                        _style_run(p.add_run(m.group(1) + " "), CN_HEAD, EN_BODY,
+                                   body_size, bold=True,
+                                   color=RGBColor(0x2E, 0x75, 0xB6))
+                        _style_run(p.add_run(seg[m.end():].strip()), CN_BODY,
+                                   EN_BODY, body_size)
+                    else:
+                        _style_run(p.add_run(seg), CN_BODY, EN_BODY, body_size)
+            elif st == "考情":
+                rows = []
+                for seg in text.split("|"):
+                    seg = seg.strip()
+                    if seg:
+                        rows.append([x.strip() for x in seg.split("｜") if x.strip()])
+                if rows:
+                    cols = max(len(r) for r in rows)
+                    t = doc.add_table(rows=len(rows), cols=cols)
+                    t.alignment = WD_TABLE_ALIGNMENT.CENTER
+                    _table_borders(t)
+                    for ri, row in enumerate(rows):
+                        for ci in range(cols):
+                            cell = t.cell(ri, ci)
+                            cell.text = ""
+                            cp = cell.paragraphs[0]
+                            _write_runs(cp, row[ci] if ci < len(row) else "",
+                                        body_size - 1.5, bold=(ri == 0))
+                    doc.add_paragraph().paragraph_format.space_after = Pt(2)
             else:
                 # 反应/概念/其他：按「key：value | key：value」拆成短行
                 p = _para(doc, "", size=body_size, first_indent=indent, line=line,
@@ -628,6 +700,255 @@ def render_paper(md: str, out_path: str | Path, *, school: str = "",
     doc.save(str(out_path))
     return out_path
 
+
+
+def _stat_table(doc, rows: list[list[str]], col_colors: dict | None = None,
+                head_fill: str = "1F4E79"):
+    """成绩统计表：深蓝表头 + 居中数字（照教师质量分析表版式）。"""
+    if not rows:
+        return
+    cols = max(len(r) for r in rows)
+    t = doc.add_table(rows=len(rows), cols=cols)
+    t.alignment = WD_TABLE_ALIGNMENT.CENTER
+    t.autofit = False
+    usable = (doc.sections[0].page_width - doc.sections[0].left_margin
+              - doc.sections[0].right_margin)
+    tblPr = t._tbl.tblPr
+    tw = OxmlElement("w:tblW")
+    tw.set(qn("w:type"), "dxa")
+    tw.set(qn("w:w"), str(int(usable / 635)))
+    tblPr.append(tw)
+    for ci in range(cols):
+        for cell in [t.cell(r, ci) for r in range(len(rows))]:
+            cell.width = int(usable / cols)
+    _table_borders(t)
+    for ri, row in enumerate(rows):
+        for ci in range(cols):
+            cell = t.cell(ri, ci)
+            cell.text = ""
+            p = cell.paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.paragraph_format.line_spacing = 1.15
+            val = row[ci] if ci < len(row) else ""
+            if ri == 0:
+                _shade_cell(cell, head_fill)
+                _style_run(p.add_run(str(val)), CN_HEAD, EN_BODY, 10.5,
+                           bold=True, color=RGBColor(0xFF, 0xFF, 0xFF))
+            else:
+                _style_run(p.add_run(str(val)), CN_BODY, EN_BODY, 10.5)
+    doc.add_paragraph().paragraph_format.space_after = Pt(2)
+
+
+def _shade_cell(cell, fill: str):
+    cell._tc.get_or_add_tcPr().append(OxmlElement("w:shd"))
+    shd = cell._tc.tcPr[-1]
+    shd.set(qn("w:fill"), fill)
+
+
+def render_grade_report(analysis: dict, out_path: str | Path, *, school: str = "",
+                        title: str = "成绩分析报告", subject: str = "",
+                        extra_sections: list[tuple[str, str]] | None = None) -> Path:
+    """成绩分析报告 docx（照教师质量分析真实版式）。
+
+    结构：成绩统计表（各科均分/最高/最低/及格率/优秀率）→ 分数段分布 →
+    总分名次榜 → 单科榜首 → 班级对比 → 多次考试趋势（进步/退步榜）→
+    等级分布（有则出）。extra_sections=[(栏目, 正文)] 可追加教学建议等手写部分。
+    """
+    d = analysis
+    doc = new_doc(margins=(Cm(1.8), Cm(1.8), Cm(2.0), Cm(1.9)))
+    _header(doc.sections[0], school=school, subject=subject,
+            title=title, doc_kind="成绩分析")
+    _footer(doc.sections[0], school, title, keep_school=False)
+    _para(doc, title, cn=CN_TITLE, size=16, bold=True,
+          align=WD_ALIGN_PARAGRAPH.CENTER, space_after=2, line=1.2)
+    cols = d.get("columns", {})
+    meta = [f"共 {d.get('n_rows', 0)} 条记录"]
+    if cols.get("exam"):
+        meta.append(f"考次：{'、'.join((d.get('trend') or {}).get('exams', [])[:6])}")
+    _para(doc, "　".join(meta), size=10.5, align=WD_ALIGN_PARAGRAPH.CENTER,
+          color=GREY, space_after=6)
+
+    # 一、各科成绩统计
+    _heading(doc, "一、各科成绩统计", 2, big=True, size=13)
+    subj = d.get("subjects", {})
+    if subj:
+        rows = [["科目", "参考人数", "均分", "中位", "最高", "最低", "标准差",
+                 "及格率%", "优秀率%"]]
+        for s, st in subj.items():
+            if not st.get("n"):
+                continue
+            rows.append([s, str(st["n"]), str(st["mean"]), str(st["median"]),
+                         str(st["max"]), str(st["min"]), str(st["std"]),
+                         str(st["pass_rate"]), str(st["excellence_rate"])])
+        _stat_table(doc, rows)
+        _para(doc, "注：及格线按满分 60%、优秀线按 85% 计；满分按该科最高分所在量程自动判定"
+                   "（≤100 记 100，>100 记 150）。",
+              size=9, color=GREY, space_after=6)
+
+    # 二、总分概况 + 分数段
+    tot = d.get("total", {})
+    if tot.get("n"):
+        _heading(doc, "二、总分概况与分数段分布", 2, big=True, size=13)
+        # 拆两行各 4 项对称排：一行塞 8 项会掉行（尾项单独换行，观感断裂）
+        _para(doc, f"参考 {tot['n']} 人｜均分 {tot['mean']}｜中位 {tot['median']}｜"
+                   f"标准差 {tot['std']}",
+              size=11, space_after=1)
+        _para(doc, f"最高 {tot['max']}｜最低 {tot['min']}｜"
+                   f"及格率 {tot['pass_rate']}%｜优秀率 {tot['excellence_rate']}%",
+              size=11, space_after=3)
+        if tot.get("bands"):
+            band_rows = [["分数段"] + list(tot["bands"].keys()),
+                         ["人数"] + [str(v) for v in tot["bands"].values()]]
+            _stat_table(doc, band_rows, head_fill="2E75B6")
+
+    # 三、总分名次榜
+    if d.get("top"):
+        _heading(doc, "三、总分名次榜", 2, big=True, size=13)
+        rk = d.get("rank_key", "总分")
+        top_rows = [["名次", "姓名", "班级", rk]]
+        for i, t in enumerate(d["top"], 1):
+            top_rows.append([str(i), t["name"], t.get("class_", ""), str(t["score"])])
+        _stat_table(doc, top_rows, head_fill="2E75B6")
+
+    # 四、单科榜首
+    if d.get("subject_tops"):
+        _heading(doc, "四、单科榜首", 2, big=True, size=13)
+        st_rows = [["科目", "第一名", "第二名", "第三名"]]
+        for s, tops in d["subject_tops"].items():
+            cells = [s]
+            for t in tops[:3]:
+                cells.append(f"{t['name']}（{t['score']}）")
+            while len(cells) < 4:
+                cells.append("")
+            st_rows.append(cells)
+        _stat_table(doc, st_rows, head_fill="2E75B6")
+
+    # 五、班级对比
+    if d.get("class_stats"):
+        _heading(doc, "五、班级对比", 2, big=True, size=13)
+        cs_rows = [["班级", "人数", "均分", "中位", "最高", "最低", "及格率%"]]
+        for c, st in d["class_stats"].items():
+            if not st.get("n"):
+                continue
+            cs_rows.append([c, str(st["n"]), str(st["mean"]), str(st["median"]),
+                            str(st["max"]), str(st["min"]), str(st["pass_rate"])])
+        _stat_table(doc, cs_rows, head_fill="2E75B6")
+
+    # 六、多次考试趋势
+    tr = d.get("trend")
+    if tr:
+        _heading(doc, "六、多次考试趋势", 2, big=True, size=13)
+        if tr.get("exam_means"):
+            em = "｜".join(f"{k} 均分 {v}" for k, v in tr["exam_means"].items())
+            _para(doc, em, size=10.5, space_after=3)
+        if tr.get("improved"):
+            _para(doc, "进步榜（按总分提升幅度）：", size=11, bold=True, space_after=2)
+            imp_rows = [["姓名", "首次", "最近", "提升"]]
+            for t in tr["improved"]:
+                imp_rows.append([t["name"], str(t["first"]), str(t["last"]),
+                                 f"+{t['delta']}" if t["delta"] >= 0 else str(t["delta"])])
+            _stat_table(doc, imp_rows, head_fill="2E7D32")
+        if tr.get("declined"):
+            _para(doc, "退步榜（需关注）：", size=11, bold=True, space_after=2)
+            dec_rows = [["姓名", "首次", "最近", "变化"]]
+            for t in tr["declined"]:
+                dec_rows.append([t["name"], str(t["first"]), str(t["last"]),
+                                 str(t["delta"])])
+            _stat_table(doc, dec_rows, head_fill="C81E1E")
+
+    # 七、等级分布（有则出）
+    if d.get("grade_dist"):
+        _heading(doc, "七、等级分布", 2, big=True, size=13)
+        for gname, dist in d["grade_dist"].items():
+            grow = [["等级"] + list(dist.keys()), ["人数"] + [str(v) for v in dist.values()]]
+            _para(doc, gname, size=11, bold=True, space_after=2)
+            _stat_table(doc, grow, head_fill="2E75B6")
+
+    # 追加手写部分（教学建议等）
+    for sec_title, body in (extra_sections or []):
+        _heading(doc, sec_title, 2, big=True, size=13)
+        for para in re.split(r"\n+", body):
+            if para.strip():
+                _para(doc, para.strip(), size=11, first_indent=0.74,
+                      line=1.5, space_after=2)
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(out_path))
+    return out_path
+
+
+def render_drill(md: str, out_path: str | Path, *, school: str = "",
+                 answers: bool = False) -> Path:
+    """练习/讲义 docx——覆盖「每日一练/限时小练」与「专题培优材料」（语料高频真实产出）。
+
+    两类版式（照真实资料）：
+      1. 限时小练/每日一练：校名+类型页眉 + 纯题组（真题源如「（2026济宁一模）」内联），
+         无密封线、紧凑；答案可选。
+      2. 专题培优/讲义：栏目链「培优知识点及达成目标 → 【典型例题】→ 【解题思路】→
+         【变式训练】→ 学生反思总结」，各栏目按写作工艺采分/逐项排除体例排。
+    answers=True 额外出答案版（{{挖空}} 红字填回，同 xuean）。
+    """
+    d = parse(md)
+    doc = new_doc(margins=(Cm(1.7), Cm(1.7), Cm(1.9), Cm(1.8)))
+    title = d.title or "练习"
+    full = title + ("（答案版）" if answers and "答案" not in title else "")
+    # 类型：讲义/培优 vs 限时小练（看标题或正文栏目）
+    _all = title + "\n" + "\n".join(s.title or "" for s in d.sections)
+    is_lecture = bool(re.search(r"培优|讲义|专题|知识点|典型例题|解题思路", _all))
+    doc_kind = "讲义" if is_lecture else "限时小练"
+    _header(doc.sections[0], school=school, subject=d.meta.get("学科", ""),
+            grade=d.meta.get("年级", ""), title=d.meta.get("课") or "",
+            author=d.meta.get("编写", ""), reviewer=d.meta.get("审核", ""),
+            date=d.meta.get("时间", ""), doc_kind=doc_kind)
+    _footer(doc.sections[0], school, title, keep_school=False)
+
+    # 标题行（可带日期/编号，真题「每日一练3」直接入标题）
+    _para(doc, full, cn=CN_TITLE, size=15, bold=True,
+          align=WD_ALIGN_PARAGRAPH.CENTER, space_after=2, line=1.2)
+    sub_bits = [d.meta.get("年级"), d.meta.get("学科"),
+                d.meta.get("时间") or d.meta.get("日期")]
+    sub = "　".join(x for x in sub_bits if x)
+    if sub:
+        _para(doc, sub, size=10, align=WD_ALIGN_PARAGRAPH.CENTER, color=GREY,
+              space_after=5, line=1.1)
+    if d.meta.get("说明"):
+        _para(doc, d.meta["说明"], size=10.5, first_indent=0.74,
+              line=1.4, space_after=4)
+
+    if d.preface:
+        _render_blocks(doc, d.preface, answers=answers, line=1.35)
+
+    # 培优/讲义栏目着色（照写作工艺：采分/逐项排除）
+    _LECTURE = re.compile(r"^(培优知识点及达成目标|典型例题|解题思路|变式训练|学生反思总结|"
+                          r"知识点|方法指导|规范表述|易错警示|归纳总结)")
+    for s in d.sections:
+        t = s.title or ""
+        if t and _LECTURE.match(sec_key(t)):
+            # 讲义栏目：蓝标题 + 可带【】原样
+            _heading(doc, t, 2, size=12.5,
+                     color=RGBColor(0x1F, 0x4E, 0x79) if is_lecture else None)
+        elif t:
+            _heading(doc, t, 2, center=False, size=12)
+        blocks = _expand_options(s.blocks)
+        i = 0
+        while i < len(blocks):
+            b = blocks[i]
+            if b.kind in ("text", "bullet") and OPTION_RE.match(b.text.strip()):
+                row = []
+                while i < len(blocks) and blocks[i].kind in ("text", "bullet") \
+                        and OPTION_RE.match(blocks[i].text.strip()):
+                    row.append(blocks[i])
+                    i += 1
+                _option_row(doc, row)
+                continue
+            _paper_block(doc, b)
+            i += 1
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(out_path))
+    return out_path
 
 
 def _collect_answer_key(d: Doc) -> list[tuple[str, str]]:

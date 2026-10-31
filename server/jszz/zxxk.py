@@ -57,7 +57,9 @@ class ZxxkClient:
     def search(self, keyword: str, page: int = 1, page_size: int = 20,
                resource_type: str = "", stage: str = "", subject: str = "",
                grade: str = "", sort: str = "") -> dict:
-        params = {"searchKey": keyword, "page": page, "pageSize": page_size}
+        # 坑：接口参数是 keyword 不是 searchKey——传错名会返回默认最新列表，
+        # 搜「原电池」和搜「原电池学案」出同样结果就是这个原因（实测 2026-10-30）
+        params = {"keyword": keyword, "page": page, "pageSize": page_size}
         if resource_type:
             params["resourceTypeName"] = resource_type
         if stage:

@@ -23,6 +23,12 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 API = "https://api.bilibili.com"
 
+_IS_BILI = re.compile(r"(bilibili\.com|b23\.tv|哔哩哔哩|B站)", re.I)
+
+
+def is_bili(url: str) -> bool:
+    return bool(_IS_BILI.search(url or ""))
+
 # 64-position mixin table used by WBI signing
 _MIXIN_KEY_ENC_TAB = [
     46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,

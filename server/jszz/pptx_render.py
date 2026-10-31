@@ -1274,6 +1274,99 @@ class Deck:
         self._chrome(s)
         return s
 
+    def mnemonic(self, title: str, text: str, *, kicker: str = "口诀"):
+        """口诀/记忆术页：居中大字对仗短句 + 强调色底，朗朗上口便于记忆。"""
+        s = self._blank()
+        self._header(s, title, kicker=kicker)
+        self._rect(s, Inches(0.9), Inches(1.7), W - Inches(1.8), H - Inches(3.1),
+                   self.s.light, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.05)
+        # 对仗口诀按「，」断行，居中竖排节奏
+        segs = [x.strip() for x in re.split(r"[，,；;]", text) if x.strip()]
+        size = 34 if len(text) < 30 else (28 if len(text) < 60 else 23)
+        tb, tf, p = self._text(s, Inches(1.3), Inches(1.95), W - Inches(2.6),
+                               H - Inches(3.6), size=size,
+                               align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE,
+                               line_spacing=1.55)
+        tf.word_wrap = True
+        for i, seg in enumerate(segs):
+            if i:
+                p.add_line_break()
+            self._run(p, seg, size=size, bold=True, color=self.s.main)
+        self._chrome(s)
+        return s
+
+    def misconceptions(self, title: str, rows: list[tuple[str, str]], *,
+                       kicker: str = "易错警示"):
+        """规范表述双栏失分对照页：左=错误写法（不得分），右=规范表述（得分）。"""
+        s = self._blank()
+        self._header(s, title, kicker=kicker)
+        half = (W - Inches(1.9)) / 2
+        top = Inches(1.5)
+        heads = [("错误写法（不得分）", _rgb("C81E1E"), Inches(0.95)),
+                 ("规范表述（得分）", _rgb("2E7D32"), Inches(0.95) + half + Inches(0.3))]
+        for tt, col, x in heads:
+            self._rect(s, x, top, half, Inches(0.5),
+                       _rgb("FDECEC") if col == _rgb("C81E1E") else _rgb("EAF5EC"),
+                       shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.12)
+            tb, tf, p = self._text(s, x + Inches(0.18), top + Inches(0.04),
+                                   half - Inches(0.36), Inches(0.42), size=15)
+            self._run(p, tt, size=15, bold=True, color=col)
+        y = top + Inches(0.62)
+        row_h = Inches(0.62)
+        for wrong, right in rows[:6]:
+            for i, (txt, col, x) in enumerate([
+                    (wrong, _rgb("8A1B1B"), Inches(0.95)),
+                    (right, _rgb("1B5E20"), Inches(0.95) + half + Inches(0.3))]):
+                self._rect(s, x, y, half, row_h - Inches(0.08),
+                           _rgb("FBF1F1") if i == 0 else _rgb("F1F7F2"),
+                           shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.1)
+                tb, tf, p = self._text(s, x + Inches(0.18), y + Inches(0.03),
+                                       half - Inches(0.36), row_h - Inches(0.12),
+                                       size=13, anchor=MSO_ANCHOR.MIDDLE)
+                tf.word_wrap = True
+                self._run(p, txt, size=13, color=col)
+            y += row_h
+        self._chrome(s)
+        return s
+
+    def scoring(self, title: str, rows: list[str], *, kicker: str = "采分点"):
+        """采分点页：每行一个得分点「要点N：主题词：展开（X分）」，分行利于抓取。"""
+        s = self._blank()
+        self._header(s, title, kicker=kicker)
+        items = []
+        for r in rows[:8]:
+            m = re.match(r"^(要点\s*\d+[:：])", r)
+            if m:
+                items.append((m.group(1), r[m.end():].strip()))
+            else:
+                items.append(("", r))
+        n = max(1, len(items))
+        row_h = min(Inches(0.82), (H - Inches(2.4)) / n)
+        y = Inches(1.55)
+        for i, (lab, body) in enumerate(items):
+            self._rect(s, Inches(0.9), y, W - Inches(1.8), row_h - Inches(0.1),
+                       self.s.light if i % 2 == 0 else self.s.white,
+                       line=_rgb("E2E6EE"), shape=MSO_SHAPE.ROUNDED_RECTANGLE,
+                       radius=0.08)
+            if lab:
+                self._rect(s, Inches(1.05), y + Inches(0.12), Inches(0.14),
+                           row_h - Inches(0.34), self.s.accent)
+                tb, tf, p = self._text(s, Inches(1.32), y + Inches(0.06),
+                                       W - Inches(2.4), row_h - Inches(0.12),
+                                       size=15, anchor=MSO_ANCHOR.MIDDLE)
+                tf.word_wrap = True
+                self._run(p, lab + " ", size=15, bold=True, color=self.s.accent)
+                self._rich(p, body, size=14)
+            else:
+                tb, tf, p = self._text(s, Inches(1.15), y + Inches(0.06),
+                                       W - Inches(2.3), row_h - Inches(0.12),
+                                       size=14, anchor=MSO_ANCHOR.MIDDLE)
+                tf.word_wrap = True
+                self._rich(p, body, size=14)
+            y += row_h
+        self._chrome(s)
+        return s
+
     def formula(self, title: str, formula: str, *, note: str = "", legs: list[str] | None = None,
                 kicker: str = ""):
         """数学/物理/化学：公式页——公式居中大字，下面两栏「条件 / 结论」或分步说明。"""
@@ -1751,6 +1844,45 @@ def _render_scene(deck, block, sec_title: str) -> None:
             else:
                 rows.append(p)
         deck.template(head, rows or [raw], mode=mode)
+    elif kind == "口诀":
+        deck.mnemonic(head, raw)
+    elif kind == "规范表述":
+        # 失分对照：错误写法｜规范表述，每行一对
+        pairs = []
+        for seg in raw.split("|"):
+            seg = seg.strip()
+            if not seg:
+                continue
+            if "｜" in seg:
+                w, _, r = seg.partition("｜")
+                pairs.append((w.strip(), r.strip()))
+            elif "→" in seg:
+                w, _, r = seg.partition("→")
+                pairs.append((w.strip(), r.strip()))
+            else:
+                pairs.append((seg, ""))
+        deck.misconceptions(head, pairs or [(raw, "")])
+    elif kind == "采分":
+        rows = [x.strip() for x in raw.split("|") if x.strip()]
+        deck.scoring(head, rows or [raw])
+    elif kind == "考情":
+        # 考情分析表：表头固定「年份｜卷别题号分值｜命题情境和角度」
+        rows = []
+        first = [x.strip() for x in raw.split("|")[0].split("｜") if x.strip()]
+        if first and not re.match(r"^\d{4}", first[0]):
+            rows.append(first)
+        for seg in raw.split("|"):
+            seg = seg.strip()
+            if not seg:
+                continue
+            cells = [x.strip() for x in seg.split("｜") if x.strip()]
+            if cells:
+                rows.append(cells)
+        if not rows:
+            rows = [[raw]]
+        if rows and not re.match(r"^(年份|时间|考点)", rows[0][0]):
+            rows.insert(0, ["年份", "卷别·题号·分值", "命题情境和角度"])
+        deck.table(head, rows, kicker="考情分析")
     elif kind == "概念":
         segs = [x.strip() for x in raw.split(">") if x.strip()]
         center = segs[0]

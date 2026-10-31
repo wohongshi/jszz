@@ -83,11 +83,15 @@ class WafSession:
         path.write_text(json.dumps(out, ensure_ascii=False, indent=1), "utf-8")
 
     def set_cookies(self, cookie_string: str, domain: str = "") -> None:
-        """Accept a raw `name=value; name2=value2` string pasted by the user."""
+        """Accept a raw `name=value; name2=value2` string pasted by the user.
+
+        坑：domain=None 会让 requests 的 create_cookie 炸（NoneType.startswith）——
+        空域名传空串即可，requests 自己按 host-only cookie 处理。
+        """
         c = SimpleCookie()
         c.load(cookie_string)
         for k, morsel in c.items():
-            self.s.cookies.set(k, morsel.value, domain=domain or None)
+            self.s.cookies.set(k, morsel.value, domain=domain or "")
 
     def cookie_header(self, url: str) -> str:
         return "; ".join(f"{k}={v}" for k, v in self.s.cookies.get_dict(url).items())

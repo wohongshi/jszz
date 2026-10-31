@@ -123,7 +123,8 @@ def parse(md: str) -> Doc:
         # meta block  > key: value
         if stripped.startswith(">"):
             body = stripped.lstrip("> ").strip()
-            mm_scene = re.match(r"^(引文|公式|对照|反应|概念|史料|材料|图表|模板)\s*[:：]\s*(.+)$", body)
+            mm_scene = re.match(r"^(引文|公式|对照|反应|概念|史料|材料|图表|模板|"
+                                r"口诀|规范表述|采分|考情)\s*[:：]\s*(.+)$", body)
             if mm_scene:
                 (cur.blocks if cur else doc.preface).append(
                     Block("scene", text=mm_scene.group(2).strip(),

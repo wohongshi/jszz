@@ -253,6 +253,177 @@ check(_ocr_once(_png_bytes(61), "学科网 www.zxxk.com") == "",
 check(_ocr_once(_png_bytes(62), "x^2+y^2=r^2") == "x^2+y^2=r^2",
       "OCR：无水印原样保留")
 
+print("== 写作工艺页型 + 工具 ==")
+_craft_md = (
+    "# 答题规范\n> 学科：化学\n\n## 易错\n"
+    "> 规范表述：把渣子滤掉｜过滤除去不溶性杂质 | 温度高不好｜温度过高，H₂O₂受热分解加快\n"
+    "## 口诀\n> 口诀：控温作答要双面，速率产率对能耗\n"
+    "## 采分\n> 采分：要点1：主题：展开（3分）｜要点2：主题：展开（3分）\n"
+    "## 考情\n> 考情：2026｜云南·14-16题·9分｜情境 | 2025｜江苏·24题·18分｜情境\n"
+    "## 例\n1. 题干（　）\nA. a　B. b　C. c　D. d\n【答案】C\n"
+    "【详解】A：排除。B：排除。C：正确。D：排除。故选 C。\n"
+)
+_craft_ppt = build_xuean_deck(_craft_md, OUT / "craft.pptx", subject="化学")
+_sl = Presentation(_craft_ppt)
+_alltxt = ""
+for s in _sl.slides:
+    for sh in s.shapes:
+        if sh.has_text_frame:
+            _alltxt += sh.text_frame.text + "\n"
+        if sh.has_table:  # pptx 表格文字在 table 单元格里，不在 text_frame
+            for row in sh.table.rows:
+                for cell in row.cells:
+                    _alltxt += cell.text + "\n"
+check("错误写法（不得分）" in _alltxt and "规范表述（得分）" in _alltxt,
+      "pptx 规范表述红绿双栏")
+check("控温作答要双面" in _alltxt, "pptx 口诀页")
+check("要点1" in _alltxt and "要点2" in _alltxt, "pptx 采分点分行")
+check("年份" in _alltxt and "命题情境" in _alltxt, "pptx 考情分析表头")
+_craft_docx = render_xuean(_craft_md, OUT / "craft.docx")
+_dt = "\n".join(p.text for p in Document(_craft_docx).paragraphs)
+check("要点1" in _dt and "控温作答要双面" in _dt, "docx 写作工艺页型不丢")
+
+from jszz.writingcraft import check_writing, suggest_scoring  # noqa: E402
+_rc = check_writing(_craft_md)
+check(_rc["ok"] and not _rc["issues"], "style_check：合规样例零 issue")
+check(_rc["counts"]["has_mnemonic"] and _rc["counts"]["has_scoring"],
+      "style_check：口诀/采分被识别")
+_bad = "1. 题（　）\nA. a B. b C. c D. d\n【答案】C\n【详解】把渣子滤掉就行了，差不多选C。"
+_rb = check_writing(_bad)
+check(not _rb["ok"] and any("口语" in i for i in _rb["issues"]),
+      "style_check：口语被判 issue")
+check(any("逐项" in w for w in _rb["warnings"]),
+      "style_check：详解未逐项排除被警告")
+_sp = suggest_scoring("茶叶推动习俗形成；促进文化交流；古代是边防媒介。")
+check(len(_sp) == 3 and _sp[0].startswith("要点1"), "scoring_suggest：拆成采分点")
+
+print("== 抖音/视频号 ==")
+from jszz.douyin import DouyinClient, is_douyin  # noqa: E402
+from jszz.channels import ChannelsClient, is_channels  # noqa: E402
+_dy = DouyinClient()
+check(is_douyin("https://v.douyin.com/iRxWcKu/") and not is_douyin("https://b23.tv/x"),
+      "douyin 链接判定")
+_r = _dy.resolve("https://www.douyin.com/video/7700562684790081714")
+check(_r["ok"] and _r["id"] == "7700562684790081714", "douyin 长链抠 ID")
+check(_dy.resolve("").get("ok") is False, "douyin 空链返回失败")
+check(_dy.resolve("https://www.iesdouyin.com/share/video/7123456789012345678/")["kind"] == "video",
+      "douyin 分享页抠 ID")
+_ch = ChannelsClient()
+check(_ch.status()["auto_download"] is False, "channels 诚实边界：不假装自动下载")
+check(is_channels("https://channels.weixin.qq.com/web/pages/feed?srf=x")
+      and not is_channels("https://b23.tv/x"), "channels 链接判定")
+# AES-128 解密回归（先加密再解密，ftyp 头还原）
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes  # noqa: E402
+_k = b"0123456789abcdef"
+_plain = b"\x00\x00\x00\x18ftyp" + b"x" * 100
+_pad = 16 - len(_plain) % 16
+_enc = Cipher(algorithms.AES(_k), modes.ECB()).encryptor()
+_blob = _enc.update(_plain + bytes([_pad]) * _pad) + _enc.finalize()
+(OUT / "ch.bin").write_bytes(_blob)
+_dr = _ch.decrypt_file(OUT / "ch.bin", _k.hex(), dest=OUT / "ch.mp4")
+check(_dr["ok"] and (OUT / "ch.mp4").read_bytes()[:4] == b"\x00\x00\x00\x18",
+      "channels AES 解密还原 ftyp")
+check(_ch.decrypt_file(OUT / "ch.bin", "zz", dest=OUT / "ch2.mp4").get("ok") is False,
+      "channels 坏 key 报错不产坏文件")
+
+print("== 小红书 + 统一取材 ==")
+from jszz.xhs import XHSClient, is_xhs  # noqa: E402
+from jszz.bilibili import is_bili  # noqa: E402
+_x = XHSClient()
+check(is_xhs("https://www.xiaohongshu.com/explore/6411cf99000000001300b6d9")
+      and is_xhs("https://xhslink.com/o/abc") and not is_xhs("https://b23.tv/x"),
+      "xhs 链接判定")
+check(_x.resolve("https://www.xiaohongshu.com/explore/6411cf99000000001300b6d9")["id"]
+      == "6411cf99000000001300b6d9", "xhs 长链抠 ID")
+check(_x.resolve("").get("ok") is False, "xhs 空链返回失败")
+check(_x.status()["has_cookie"] is False, "xhs 未配 cookie 如实报 false")
+check(_x.status()["auto_download"] is False, "xhs 诚实边界：无 cookie 不假装自动下载")
+check(_x.has_cookie() is False, "xhs has_cookie 未配为 false")
+# 统一取材平台识别（5 路由，不真下）
+check(is_bili("https://www.bilibili.com/video/BV1xx") and is_bili("https://b23.tv/x"),
+      "bili 链接判定（b23.tv 短链也认）")
+_routed = [("https://www.bilibili.com/video/BV1xx", "bilibili"),
+           ("https://v.douyin.com/iRxWcKu/", "douyin"),
+           ("https://www.xiaohongshu.com/explore/6411cf99000000001300b6d9", "xhs"),
+           ("https://channels.weixin.qq.com/web/pages/feed?srf=x", "channels")]
+_ok = all((("douyin" if is_douyin(u) else "xhs" if is_xhs(u)
+            else "channels" if is_channels(u) else "bilibili" if is_bili(u)
+            else "unknown") == exp) for u, exp in _routed)
+check(_ok, "material_fetch 平台识别 4/4")
+
+print("== 练习/讲义（drill）==")
+from jszz.docx_render import render_drill  # noqa: E402
+_drill_md = (
+    "# 胶州四中高三化学每日一练3\n> 学科：化学 | 年级：高三\n\n## 限时小练\n"
+    "1.（2026济宁一模）题干（　　）\nA. a　B. b　C. c　D. d\n\n"
+    "## 参考答案\n1.【答案】C\n"
+)
+_dp = render_drill(_drill_md, OUT / "drill.docx", school="测试中学")
+_dt = "\n".join(p.text for p in Document(_dp).paragraphs)
+check("每日一练3" in _dt and "限时小练" in _dt, "drill：每日一练标题+栏目")
+check("（2026济宁一模）" in _dt, "drill：真题源内联")
+_lec_md = (
+    "# 胶州四中高三化学尖子生培优材料\n\n## 培优知识点及达成目标\n高考选择题高频。\n"
+    "## 【典型例题】\n1. 题干（　）\n## 【解题思路】\nA：排除。\n## 【变式训练】\n1. 变式\n"
+    "## 学生反思总结\n归纳失分点。\n"
+)
+_lp = render_drill(_lec_md, OUT / "lecture.docx")
+_lt = "\n".join(p.text for p in Document(_lp).paragraphs)
+check(all(x in _lt for x in ["培优知识点及达成目标", "典型例题", "解题思路", "变式训练", "学生反思总结"]),
+      "drill：培优五栏目全在")
+import jszz.server as _srv  # noqa: E402
+_mr = _srv.make_drill(_drill_md, name="回归测试", answers=True)
+check(_mr["ok"] and _mr["questions"] >= 1 and "docx" in _mr["files"]
+      and "docx_answers" in _mr["files"], "make_drill：MCP 产物齐")
+check(_mr["qa"]["docx"]["ok"] and _mr["qa"]["markdown"]["ok"], "make_drill：QA 全过")
+
+print("== 成绩分析（grade）==")
+from jszz.grades import analyze, load_scores  # noqa: E402
+_rows = [
+    {"姓名": "甲", "班级": "1", "学籍号": 2024001, "考试": "上期中", "语文": 90, "数学": 80, "总分": 170},
+    {"姓名": "乙", "班级": "1", "学籍号": 2024002, "考试": "上期中", "语文": 70, "数学": 60, "总分": 130},
+    {"姓名": "甲", "班级": "1", "学籍号": 2024001, "考试": "上期末", "语文": 95, "数学": 88, "总分": 183},
+    {"姓名": "乙", "班级": "2", "学籍号": 2024002, "考试": "上期末", "语文": 65, "数学": 55, "总分": 120},
+]
+_g = load_scores(_rows)
+check(_g["ok"] and "学籍号" not in _g["columns"]["subjects"],
+      "grade：ID 列（学籍号）不误当科目")
+check(_g["columns"]["exam"] == "考试" and _g["columns"]["total"] == "总分",
+      "grade：考次/总分列检测")
+_a = analyze(_g["rows"], _g["columns"])
+check(_a["subjects"]["语文"]["n"] == 4 and _a["subjects"]["语文"]["mean"] == 80.0,
+      "grade：科目均分正确（90+70+95+65）/4=80")
+check(_a["total"]["n"] == 4 and abs(_a["total"]["mean"] - 150.75) < 0.01,
+      "grade：总分均分正确")
+check(len(_a["top"]) >= 2 and _a["top"][0]["name"] == "甲",
+      "grade：名次榜按分排序")
+check(_a["trend"] is not None and _a["trend"]["n_students"] == 2,
+      "grade：多次考试趋势（同名学生聚合）")
+check(_a["trend"]["improved"][0]["name"] == "甲"
+      and _a["trend"]["improved"][0]["delta"] == 13.0,
+      "grade：进步榜 delta 正确（183-170=13）")
+# 名次榜去重（多考次长表同一学生只占一个名次）
+_dup_rows = [
+    {"姓名": "甲", "考试": "上期中", "总分": 100},
+    {"姓名": "甲", "考试": "上期末", "总分": 200},
+    {"姓名": "乙", "考试": "上期末", "总分": 150},
+]
+_da = analyze(*[load_scores(_dup_rows)[k] for k in ("rows", "columns")])
+_dn = [t["name"] for t in _da["top"]]
+check(_dn == ["甲", "乙"] and _da["top"][0]["score"] == 200.0,
+      "grade：名次榜按最近考次去重（甲只占 1 席且取最近分 200）")
+# 渲染 + MCP 真跑（JSON 输入）
+import jszz.server as _svcg  # noqa: E402
+_mr = _svcg.make_grade_report(
+    '[{"姓名":"丙","班级":"3","语文":88,"数学":77,"总分":165}]',
+    name="成绩分析回归", notes="测试建议。")
+check(_mr["ok"] and _mr["n_rows"] == 1 and "docx" in _mr["files"],
+      "make_grade_report：JSON 输入出 docx")
+check(_mr["summary"]["total_mean"] == 165.0
+      and _mr["summary"]["subjects"]["语文"]["mean"] == 88.0,
+      "make_grade_report：摘要指标正确")
+check(Path(_mr["files"]["docx"]).exists(), "make_grade_report：docx 落盘")
+
 print("== 打包完整性 ==")
 skill_zip = ROOT / "dist" / "jszz.skill"
 if skill_zip.exists():

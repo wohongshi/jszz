@@ -14,7 +14,7 @@ from typing import Any
 from . import config
 from .assemble import make_paper as _make_paper
 from .bilibili import BilibiliClient
-from .docx_render import render_paper, render_xuean
+from .docx_render import render_drill, render_grade_report, render_paper, render_xuean
 from .pptx_render import build_paper_deck, build_xuean_deck
 from .qa import check as _qa_check
 from .zxxk import ZxxkClient
@@ -394,6 +394,92 @@ def make_paper_md(markdown: str, name: str = "", docx: bool = True,
 
 
 @mcp.tool()
+def make_drill(markdown: str, name: str = "", answers: bool = False) -> dict:
+    """练习/讲义 Markdown → 可打印 docx（每日一练/限时小练/专题培优材料）。
+
+    覆盖教师日常高频产出的两类（照真实资料版式）：
+      1. 限时小练/每日一练：纯题组，真题源内联（如「（2026济宁一模）」），紧凑无密封线。
+      2. 专题培优/讲义：栏目链「培优知识点及达成目标 → 【典型例题】→ 【解题思路】→
+         【变式训练】→ 学生反思总结」，按写作工艺采分/逐项排除体例排。
+
+    推荐结构：
+      # 胶州四中高三化学每日一练3
+      > 学科：化学 | 年级：高三 | 时间：2026.10
+      ## 限时小练
+      1.（2026济宁一模）题干（　　）
+      A. …　B. …　C. …　D. …
+      ## 参考答案
+      1.【答案】C
+
+    answers=True 额外出答案版 docx（{{挖空}} 红字填回）。返回 files / questions / qa。
+    """
+    md = markdown.strip()
+    title = name or (re.search(r"^#\s+(.+)$", md, re.M).group(1)
+                     if re.search(r"^#\s+(.+)$", md, re.M) else "练习")
+    base = _slug(title)
+    d = _out("drill")
+    files: dict[str, str] = {}
+    (d / f"{base}.md").write_text(md + "\n", "utf-8")
+    files["md"] = str(d / f"{base}.md")
+    files["docx"] = str(render_drill(md, d / f"{base}.docx",
+                                     school=config.load().get("school", "")))
+    if answers:
+        files["docx_answers"] = str(render_drill(
+            md, d / f"{base}-答案版.docx",
+            school=config.load().get("school", ""), answers=True))
+    report = _qa_check(md=md, docx=files.get("docx"))
+    return {"ok": True, "files": files, "title": title,
+            "questions": len(re.findall(r"^\s*\d{1,2}[.．、]", md, re.M)),
+            "qa": _qa_summary(report)}
+
+
+@mcp.tool()
+def make_grade_report(scores: str, name: str = "", subject: str = "",
+                      notes: str = "") -> dict:
+    """成绩分析报告：成绩表 → 可打印 docx（教师质量分析版式）。
+
+    scores 是成绩表数据，两种给法：
+      1. xlsx 文件绝对路径（适配 U 盘真实三种表：多考试长表「考试|班级|姓名|各科」、
+         调考成绩单「班级|姓名|学籍号|考号|各科+名次+等级」、单次考试「序号|姓名|各科|总分」）；
+      2. JSON 字符串：行数组，字段如 {"姓名":"张三","班级":"1","语文":90,"数学":80,…}。
+
+    自动列检测（学籍号/考号/序号等 ID 列不会误当分数），分析产出：
+    各科统计（均分/中位/最高/最低/标准差/及格率/优秀率）+ 分数段分布 + 总分名次榜 +
+    单科榜首 + 班级对比 + 多次考试趋势（进步/退步榜）+ 等级分布。
+    notes 可追加教学建议（\\n 分段）。返回 files / summary 指标。
+    """
+    from .grades import analyze, load_scores
+    d = load_scores(scores)
+    if not d.get("ok"):
+        return {"ok": False, "error": d.get("error", "成绩数据解析失败")}
+    a = analyze(d["rows"], d["columns"])
+    title = name or "成绩分析报告"
+    extra = []
+    if notes:
+        extra.append(("八、教学建议", notes))
+    files: dict[str, str] = {}
+    out = _out("grade")
+    out.mkdir(parents=True, exist_ok=True)
+    docx_path = out / f"{_slug(title)}.docx"
+    files["docx"] = str(render_grade_report(a, docx_path,
+                                            school=config.load().get("school", ""),
+                                            title=title, subject=subject,
+                                            extra_sections=extra))
+    # 摘要指标（供智能体直接读，不必开 docx）
+    summary = {
+        "n_rows": a.get("n_rows"),
+        "subjects": {k: {"mean": v.get("mean"), "pass_rate": v.get("pass_rate"),
+                         "excellence_rate": v.get("excellence_rate")}
+                     for k, v in (a.get("subjects") or {}).items() if v.get("n")},
+        "total_mean": (a.get("total") or {}).get("mean"),
+        "top3": (a.get("top") or [])[:3],
+        "has_trend": bool(a.get("trend")),
+    }
+    return {"ok": True, "files": files, "title": title,
+            "n_rows": a.get("n_rows"), "summary": summary}
+
+
+@mcp.tool()
 def assemble_paper(questions_json: str, title: str, duration: int = 90,
                    total_score: int | None = None, with_answers: bool = True,
                    docx: bool = True, pptx: bool = True,
@@ -419,6 +505,180 @@ def assemble_paper(questions_json: str, title: str, duration: int = 90,
                     formats=("md",) + (("docx",) if docx else ()) + (("pptx",) if pptx else ()))
     r.pop("markdown", None)
     return r
+
+
+# ---------------------------------------------------------------- 抖音/视频号
+@mcp.tool()
+def douyin_info(url: str) -> dict:
+    """抖音视频解析（元数据 + 无水印直链）。给老师备课取课堂视频素材。
+
+    url: 分享短链 https://v.douyin.com/xxx/ 或视频页 https://www.douyin.com/video/<id> 或图文 /note/<id>
+    返回 title(作品描述) / author(作者) / duration / cover / url(无水印播放直链) / source。
+    实现：解析分享页 _ROUTER_DATA 抠 play_addr（借鉴 GitHub 开源 Evil0ctal/Douyin_TikTok_Download_API），
+    失败降级 yt-dlp。cookie 由无头 chromedriver 过抖音 JS 质询自动收割。
+    """
+    from .douyin import DouyinClient
+    return DouyinClient().info(url)
+
+
+@mcp.tool()
+def douyin_download(url: str, audio_only: bool = False) -> dict:
+    """下载抖音视频/音频到本地（课堂素材）。
+
+    audio_only=True → mp3（听力/背景音）；False → mp4（无水印）。
+    返回产物绝对路径 file / size / title。主路 play_addr 直链流式下载，失败降级 yt-dlp。
+    """
+    from .douyin import DouyinClient
+    return DouyinClient().download(url, _out("douyin"), audio_only=audio_only)
+
+
+@mcp.tool()
+def douyin_audio_stream(url: str) -> dict:
+    """取抖音音频直链（不落盘），交给播放器或转写服务。"""
+    from .douyin import DouyinClient
+    return DouyinClient().audio_url(url)
+
+
+@mcp.tool()
+def channels_status() -> dict:
+    """微信视频号能力边界（如实报告，不假装能自动下载）。
+
+    视频号「链接→视频」无法纯服务端完成：需微信客户端登录态（服务端无客户端 →
+    errCode 10012），yt-dlp 无 finder extractor，开源方案靠本地代理拦截微信 PC 客户端
+    视频流解密（桌面端机制）。本服务只支持：给定桌面助手抓到的直链+解密key → 下载解密。
+    """
+    from .channels import ChannelsClient
+    return ChannelsClient().status()
+
+
+@mcp.tool()
+def channels_probe(url: str) -> dict:
+    """探测一条视频号链接：能否直连、是否需微信登录态，并给出抓取前置条件提示。"""
+    from .channels import ChannelsClient
+    return ChannelsClient().probe(url)
+
+
+@mcp.tool()
+def channels_download(url: str, key: str = "", filename: str = "") -> dict:
+    """下载微信视频号视频（url + 解密 key 由桌面助手 wx_video_download 在微信 PC 端抓取）。
+
+    url: 视频直链（桌面助手抓到的）；key: 解密 key（16/24/32 字节 hex 或原文，可留空存原始字节）；
+    filename: 自定义文件名。返回产物路径 + decrypted 标志。
+    服务端做下载 + AES 解密；抓取环节必须桌面微信客户端，无法绕过（见 channels_status）。
+    """
+    from .channels import ChannelsClient
+    return ChannelsClient().download(url, _out("channels"), key=key,
+                                     filename=filename or f"channels_{int(__import__('time').time())}")
+
+
+# ---------------------------------------------------------------- 统一取材
+@mcp.tool()
+def material_fetch(url: str, audio_only: bool = False) -> dict:
+    """统一取材入口：贴任意视频/笔记链接，自动识别平台（B站/抖音/小红书/视频号）→ 分发下载。
+
+    老师不用记各平台工具名，一个入口贴链接就行。
+    返回 platform / ok / file(s) / 元数据；识别不出平台或平台需登录态时如实报边界。
+    audio_only=True 只要音频（B站/抖音支持 mp3）。
+    """
+    from .bilibili import BilibiliClient, is_bili
+    from .channels import ChannelsClient, is_channels
+    from .douyin import DouyinClient, is_douyin
+    from .xhs import XHSClient, is_xhs
+
+    url = (url or "").strip()
+    if not url:
+        return {"ok": False, "error": "空链接"}
+    # 判平台（顺序：具体域名先判）
+    if is_douyin(url):
+        r = DouyinClient().download(url, _out("douyin"), audio_only=audio_only)
+        return {"platform": "douyin", **r}
+    if is_xhs(url):
+        r = XHSClient().download(url, _out("xhs"))
+        return {"platform": "xhs", **r}
+    if is_channels(url):
+        return {"platform": "channels", "ok": False, "auto_download": False,
+                "error": "视频号需桌面助手抓直链+key（见 channels_status），统一入口只识别不下载",
+                "hint": "channels_download(url, key)"}
+    if is_bili(url):
+        # b23.tv 短链 → bvid 解析走 bilibili 客户端；直接喂 yt-dlp 兜底
+        import re as _re
+        m = _re.search(r"(BV[\w]+)", url)
+        if m:
+            r = BilibiliClient(cookie=config.read_cookie("bilibili")).download(
+                m.group(1), _out("bilibili"), audio_only=audio_only)
+            return {"platform": "bilibili", **r}
+        return {"platform": "bilibili", "ok": False,
+                "error": "短链未解析出 bvid，用 bili_download 配合 bili_video_info"}
+    return {"ok": False, "platform": "unknown",
+            "error": f"识别不出平台（支持 B站/抖音/小红书/视频号）: {url[:60]}"}
+
+
+# ---------------------------------------------------------------- 小红书
+@mcp.tool()
+def xhs_status() -> dict:
+    """小红书能力边界（如实报告，不假装能未登录自动下载）。
+
+    小红书笔记媒体靠登录态 + x-s/x-t 请求签名 API 异步填充，SSR 不含直链：未登录
+    noteDetailMap 为空、feed API 返回 code:-1、yt-dlp 报 No video formats found。
+    有登录 cookie 时递归抠 masterUrl/imageList 可下载。配 cookie 见 xhs_download。
+    """
+    from .xhs import XHSClient
+    return XHSClient().status()
+
+
+@mcp.tool()
+def xhs_info(url: str) -> dict:
+    """小红书笔记解析（元数据 + 视频/图直链）。给老师备课取课堂素材。
+
+    url: 笔记链 https://www.xiaohongshu.com/explore/<id> 或分享短链 xhslink.com/xxx
+    返回 title(描述)/author(作者)/type(video|image)/video_urls/image_urls/url。
+    无登录 cookie 时如实返回 need_login=True + auto_download=False（不假装）。
+    实现：解析 __INITIAL_STATE__ → noteDetailMap 递归抠 masterUrl/imageList（同抖音套路），
+    curl_cffi impersonate 过基础反爬。cookie 在 WebUI/CLI 配（登录后浏览器复制）。
+    """
+    from .xhs import XHSClient
+    return XHSClient().info(url)
+
+
+@mcp.tool()
+def xhs_download(url: str, filename: str = "") -> dict:
+    """下载小红书视频/图到本地（课堂素材）。需配小红书登录 cookie。
+
+    返回 files[] 产物绝对路径 / count / type。有 cookie 时从 __INITIAL_STATE__ 抠直链下载；
+    无 cookie 如实返回 need_login（见 xhs_status 的平台边界说明）。
+    """
+    from .xhs import XHSClient
+    return XHSClient().download(url, _out("xhs"), filename=filename)
+
+
+# ---------------------------------------------------------------- 写作工艺
+@mcp.tool()
+def jszz_style_check(markdown: str) -> dict:
+    """写作工艺体检（不生成文件）：按全 788 份真实教师资料的语言规律检查一份学案/试卷。
+
+    检查项：
+      1. 详解体例——选择题是否逐项排除（X：理由，排除/正确）+「故选」收口
+      2. 短句原则——主观题答案是否按采分点分行（阅卷按要点独立给分）
+      3. 禁口语——答案/详解里有无「把渣子」「多加点」等阅卷不得分的口语
+      4. 归纳/口诀——有没有（真实资料 459/788 有口诀）
+      5. 题源标注——真题是否照学科网原文标「（26-27高二上·河北石家庄·阶段检测）」
+    返回 issues（必须改）/warnings（建议改）/hints（加分项）+ 计数。
+    """
+    from .writingcraft import check_writing
+    return check_writing(markdown)
+
+
+@mcp.tool()
+def jszz_scoring_suggest(answer: str) -> dict:
+    """把一段主观题答案按短句原则拆成采分点草稿（启发式，供人工核对）。
+
+    阅卷按「要点独立给分」，一句含几个得分关键词就得几分。本工具把长句答案
+    按分号/句号/换行拆成「要点N：展开」，方便核对是否写足信息点。
+    """
+    from .writingcraft import suggest_scoring
+    pts = suggest_scoring(answer)
+    return {"ok": True, "points": pts, "count": len(pts),
+            "note": "启发式拆分，分值与关键词请人工核对"}
 
 
 # ---------------------------------------------------------------- 状态

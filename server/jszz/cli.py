@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import config
 from .bilibili import BilibiliClient
-from .docx_render import render_paper, render_xuean
+from .docx_render import render_drill, render_grade_report, render_paper, render_xuean
 from .pptx_render import build_paper_deck, build_xuean_deck
 from .zxxk import ZxxkClient
 
@@ -109,6 +109,36 @@ def cmd_paper(args):
         print(f)
 
 
+def cmd_drill(args):
+    md = Path(args.file).read_text("utf-8")
+    base = args.name or Path(args.file).stem
+    out = config.out_dir("drill")
+    files = [render_drill(md, out / f"{base}.docx",
+                          school=config.load().get("school", ""),
+                          answers=args.answers)]
+    if args.answers:
+        files.append(render_drill(md, out / f"{base}-答案版.docx",
+                                  school=config.load().get("school", ""), answers=True))
+    for f in files:
+        print(f)
+
+
+def cmd_grade(args):
+    from .grades import analyze, load_scores
+    d = load_scores(args.file)
+    if not d.get("ok"):
+        raise SystemExit(f"成绩数据解析失败: {d.get('error')}")
+    a = analyze(d["rows"], d["columns"])
+    extra = [("八、教学建议", args.notes)] if args.notes else []
+    out = config.out_dir("grade")
+    title = args.name or "成绩分析报告"
+    p = render_grade_report(a, out / f"{title}.docx",
+                            school=config.load().get("school", ""),
+                            title=title, subject=args.subject or "",
+                            extra_sections=extra)
+    print(p)
+
+
 def cmd_check(args):
     from .qa import check
     r = check(md=Path(args.md).read_text("utf-8") if args.md else None,
@@ -178,6 +208,19 @@ def main(argv=None):
     s.add_argument("--no-pptx", action="store_true")
     s.add_argument("--no-answers", action="store_true")
     s.set_defaults(func=cmd_paper)
+
+    s = sub.add_parser("drill", help="练习/讲义 Markdown → docx（每日一练/限时小练/专题培优）")
+    s.add_argument("file")
+    s.add_argument("--name")
+    s.add_argument("--answers", action="store_true", help="额外出答案版 docx")
+    s.set_defaults(func=cmd_drill)
+
+    s = sub.add_parser("grade", help="成绩表(xlsx/JSON) → 成绩分析报告 docx")
+    s.add_argument("file")
+    s.add_argument("--name", default="成绩分析报告")
+    s.add_argument("--subject", default="")
+    s.add_argument("--notes", default="", help="教学建议（追加到报告末尾）")
+    s.set_defaults(func=cmd_grade)
 
     s = sub.add_parser("check", help="体检：Markdown / docx / pptx")
     s.add_argument("--md")
